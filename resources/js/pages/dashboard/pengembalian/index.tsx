@@ -1,6 +1,6 @@
 
 import { useMemo, useState } from 'react';
-import { Link } from '@inertiajs/react';
+import { Link } from '@/lib/next-compat';
 import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';

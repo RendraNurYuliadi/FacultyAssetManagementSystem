@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
@@ -7,11 +8,17 @@ import AssetManagementBanner from '../../../components/dashboard/AssetManagement
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '../../../lib/management-client';
+import { nextNumberedUniqueValue } from '../../../lib/duplicate';
+import { copyStoredImage } from '../../../lib/image-file';
 
 type ItemStatus = 'Aktif' | 'Tidak Aktif';
 
 type Item = {
-    id: number;
+    id: string;
     code: string;
     name: string;
     category: string;
@@ -19,12 +26,19 @@ type Item = {
     model: string;
     specification: string;
     unit: string;
+    locationId: string;
     responsiblePerson: string;
     description: string;
     status: ItemStatus;
+    rfidCode: string;
     images: string[];
-    imageNames: string[];
     createdAt: string;
+};
+
+type ItemFormImage = {
+    src: string;
+    name: string;
+    file?: File;
 };
 
 type ItemForm = {
@@ -35,11 +49,17 @@ type ItemForm = {
     model: string;
     specification: string;
     unit: string;
+    locationId: string;
     responsiblePerson: string;
     description: string;
     status: ItemStatus;
-    images: string[];
-    imageNames: string[];
+    rfidCode: string;
+    images: ItemFormImage[];
+};
+
+type LocationOption = {
+    id: string;
+    name: string;
 };
 
 const MAX_IMAGES = 10;
@@ -56,98 +76,6 @@ const masterCategories = [
     'Lainnya',
 ];
 
-const initialItems: Item[] = [
-    {
-        id: 1,
-        code: 'BRG-001',
-        name: 'Laptop Lenovo ThinkPad',
-        category: 'Elektronik',
-        brand: 'Lenovo',
-        model: 'ThinkPad E14',
-        specification: 'Intel Core i5, RAM 16GB, SSD 512GB, layar 14 inci.',
-        unit: 'Unit',
-        responsiblePerson: 'Pengelola Barang',
-        description: 'Laptop untuk menunjang kegiatan akademik, administrasi, dan operasional fakultas.',
-        status: 'Aktif',
-        images: [
-            'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800',
-            'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=800',
-        ],
-        imageNames: ['Laptop Lenovo.jpg', 'Laptop Lenovo 2.jpg'],
-        createdAt: '2025-01-15',
-    },
-    {
-        id: 2,
-        code: 'BRG-002',
-        name: 'Proyektor Epson',
-        category: 'Peralatan Multimedia',
-        brand: 'Epson',
-        model: 'EB-E01',
-        specification: 'Resolusi XGA, teknologi 3LCD, konektivitas HDMI.',
-        unit: 'Unit',
-        responsiblePerson: 'Pengelola Barang',
-        description: 'Proyektor untuk kegiatan presentasi, perkuliahan, seminar, dan kegiatan fakultas.',
-        status: 'Aktif',
-        images: [
-            'https://images.unsplash.com/photo-1528395874238-34ebe249b3f2?w=800',
-        ],
-        imageNames: ['Proyektor Epson.jpg'],
-        createdAt: '2025-03-10',
-    },
-    {
-        id: 3,
-        code: 'BRG-003',
-        name: 'Kursi Kuliah',
-        category: 'Furniture',
-        brand: 'Olympic',
-        model: 'Kursi Kuliah Standar',
-        specification: 'Rangka besi, dudukan dan sandaran berbahan kayu.',
-        unit: 'Unit',
-        responsiblePerson: 'Pengelola Barang',
-        description: 'Kursi untuk menunjang kegiatan belajar mengajar di ruang kelas.',
-        status: 'Aktif',
-        images: [
-            'https://images.unsplash.com/photo-1503602642458-232111445657?w=800',
-        ],
-        imageNames: ['Kursi Kuliah.jpg'],
-        createdAt: '2025-02-01',
-    },
-    {
-        id: 4,
-        code: 'BRG-004',
-        name: 'Meja Komputer',
-        category: 'Furniture',
-        brand: 'Lokal',
-        model: 'Meja Komputer Standar',
-        specification: 'Meja berbahan kayu dengan rangka besi.',
-        unit: 'Unit',
-        responsiblePerson: 'Pengelola Barang',
-        description: 'Meja untuk penempatan komputer dan perlengkapan praktikum.',
-        status: 'Aktif',
-        images: [],
-        imageNames: [],
-        createdAt: '2025-02-10',
-    },
-    {
-        id: 5,
-        code: 'BRG-005',
-        name: 'Printer Epson L3210',
-        category: 'Peralatan Kantor',
-        brand: 'Epson',
-        model: 'EcoTank L3210',
-        specification: 'Printer multifungsi print, scan, dan copy dengan sistem ink tank.',
-        unit: 'Unit',
-        responsiblePerson: 'Pengelola Barang',
-        description: 'Printer untuk kebutuhan pencetakan dokumen administrasi fakultas.',
-        status: 'Tidak Aktif',
-        images: [
-            'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?w=800',
-        ],
-        imageNames: ['Printer Epson.jpg'],
-        createdAt: '2024-11-20',
-    },
-];
-
 const emptyForm: ItemForm = {
     code: '',
     name: '',
@@ -156,11 +84,12 @@ const emptyForm: ItemForm = {
     model: '',
     specification: '',
     unit: 'Unit',
+    locationId: '',
     responsiblePerson: '',
     description: '',
     status: 'Aktif',
+    rfidCode: '',
     images: [],
-    imageNames: [],
 };
 
 const inputClass =
@@ -202,20 +131,48 @@ function formatDate(value: string) {
 }
 
 export default function DataBarang() {
-    const [items, setItems] = useState<Item[]>(initialItems);
+    const [items, setItems] = useState<Item[]>([]);
+    const [locations, setLocations] = useState<LocationOption[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('Semua');
     const [statusFilter, setStatusFilter] = useState('Semua');
+    const [locationFilter, setLocationFilter] = useState('Semua');
     const [currentPage, setCurrentPage] = useState(1);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [detailItem, setDetailItem] = useState<Item | null>(null);
-    const [editingId, setEditingId] = useState<number | null>(null);
-    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
 
     const [form, setForm] = useState<ItemForm>(emptyForm);
     const [imagePreview, setImagePreview] =
         useState<ImagePreviewState | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        Promise.all([
+            managementRequest<{ items: Item[] }>('/api/admin/items'),
+            managementRequest<{ locations: LocationOption[] }>(
+                '/api/admin/locations',
+            ),
+        ])
+            .then(([itemResult, locationResult]) => {
+                if (!active) return;
+                setItems(itemResult.items);
+                setLocations(locationResult.locations);
+            })
+            .catch((error: unknown) => {
+                if (active) alert(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
     useEffect(() => {
         if (!modalOpen && !detailItem && !deleteId && !imagePreview) return;
@@ -242,11 +199,20 @@ export default function DataBarang() {
         const keyword = search.toLowerCase().trim();
 
         return items.filter((item) => {
-            const matchesSearch =
-                item.name.toLowerCase().includes(keyword) ||
-                item.code.toLowerCase().includes(keyword) ||
-                item.brand.toLowerCase().includes(keyword) ||
-                item.model.toLowerCase().includes(keyword);
+            const matchesSearch = [
+                item.name,
+                item.code,
+                item.category,
+                item.brand,
+                item.model,
+                item.specification,
+                item.unit,
+                item.responsiblePerson,
+                item.description,
+                item.status,
+                item.rfidCode,
+                getLocationName(item.locationId),
+            ].some((value) => value.toLowerCase().includes(keyword));
 
             const matchesCategory =
                 categoryFilter === 'Semua' ||
@@ -255,10 +221,13 @@ export default function DataBarang() {
             const matchesStatus =
                 statusFilter === 'Semua' ||
                 item.status === statusFilter;
+            const matchesLocation =
+                locationFilter === 'Semua' ||
+                item.locationId === locationFilter;
 
-            return matchesSearch && matchesCategory && matchesStatus;
+            return matchesSearch && matchesCategory && matchesStatus && matchesLocation;
         });
-    }, [items, search, categoryFilter, statusFilter]);
+    }, [items, search, categoryFilter, statusFilter, locationFilter, locations]);
 
     const totalPages = Math.max(
         1,
@@ -314,11 +283,15 @@ export default function DataBarang() {
         }));
     }
 
+    function getLocationName(id: string) {
+        return locations.find((location) => location.id === id)?.name ?? '-';
+    }
+
     function openCreateModal() {
         setEditingId(null);
         setForm({
             ...emptyForm,
-            code: `BRG-${String(Date.now()).slice(-6)}`,
+            code: `BRG-${Date.now()}`,
         });
         setModalOpen(true);
     }
@@ -334,11 +307,15 @@ export default function DataBarang() {
             model: item.model,
             specification: item.specification,
             unit: item.unit,
+            locationId: item.locationId,
             responsiblePerson: item.responsiblePerson,
             description: item.description,
             status: item.status,
-            images: [...item.images],
-            imageNames: [...item.imageNames],
+            rfidCode: item.rfidCode,
+            images: item.images.map((src, index) => ({
+                src,
+                name: `Foto ${index + 1}`,
+            })),
         });
 
         setModalOpen(true);
@@ -367,9 +344,54 @@ export default function DataBarang() {
         });
     }
 
-    async function handleImageUpload(
-        event: React.ChangeEvent<HTMLInputElement>,
-    ) {
+    async function duplicateItem(item: Item) {
+        let images: ItemFormImage[];
+        try {
+            images = await Promise.all(
+                item.images.map(async (src, index) => {
+                    const file = await copyStoredImage(
+                        src,
+                        `${item.code}-copy-${index + 1}`,
+                    );
+                    return {
+                        src: await readImage(file),
+                        name: file.name,
+                        file,
+                    };
+                }),
+            );
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+            return;
+        }
+
+        setEditingId(null);
+        setForm({
+            code: nextNumberedUniqueValue(
+                item.code,
+                items.map((current) => current.code),
+                40,
+            ),
+            name: nextNumberedUniqueValue(
+                item.name,
+                items.map((current) => current.name),
+            ),
+            category: item.category,
+            brand: item.brand,
+            model: item.model,
+            specification: item.specification,
+            unit: item.unit,
+            locationId: item.locationId,
+            responsiblePerson: item.responsiblePerson,
+            description: item.description,
+            status: item.status,
+            rfidCode: '',
+            images,
+        });
+        setModalOpen(true);
+    }
+
+    async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
         const files = Array.from(event.target.files ?? []);
         event.target.value = '';
 
@@ -383,11 +405,13 @@ export default function DataBarang() {
         }
 
         const validFiles = files.filter((file) =>
-            ['image/jpeg', 'image/png', 'image/webp'].includes(file.type),
+            ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) &&
+            file.size > 0 &&
+            file.size <= 5 * 1024 * 1024,
         );
 
         if (validFiles.length !== files.length) {
-            alert('Format gambar harus JPG, PNG, atau WEBP.');
+            alert('Foto harus JPG, PNG, atau WEBP dan maksimal 5 MB per file.');
         }
 
         const selectedFiles = validFiles.slice(0, remainingSlots);
@@ -400,22 +424,23 @@ export default function DataBarang() {
 
         try {
             const imageResults = await Promise.all(
-                selectedFiles.map((file) => readImage(file)),
+                selectedFiles.map(async (file) => ({
+                    src: await readImage(file),
+                    name: file.name,
+                    file,
+                })),
             );
 
             setForm((previous) => ({
                 ...previous,
-                images: [...previous.images, ...imageResults].slice(
-                    0,
-                    MAX_IMAGES,
-                ),
-                imageNames: [
-                    ...previous.imageNames,
-                    ...selectedFiles.map((file) => file.name),
-                ].slice(0, MAX_IMAGES),
+                images: [...previous.images, ...imageResults].slice(0, MAX_IMAGES),
             }));
-        } catch {
-            alert('Ada gambar yang gagal dibaca. Silakan coba kembali.');
+        } catch (error: unknown) {
+            alert(
+                error instanceof Error
+                    ? error.message
+                    : 'Ada gambar yang gagal dibaca. Silakan coba kembali.',
+            );
         }
     }
 
@@ -425,13 +450,17 @@ export default function DataBarang() {
             images: previous.images.filter(
                 (_, imageIndex) => imageIndex !== index,
             ),
-            imageNames: previous.imageNames.filter(
-                (_, imageIndex) => imageIndex !== index,
-            ),
         }));
     }
 
-    function saveItem(event: React.FormEvent<HTMLFormElement>) {
+    async function loadItems() {
+        const result = await managementRequest<{ items: Item[] }>(
+            '/api/admin/items',
+        );
+        setItems(result.items);
+    }
+
+    async function saveItem(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         if (!form.name.trim()) {
@@ -448,6 +477,14 @@ export default function DataBarang() {
             alert('Penanggung jawab barang wajib diisi.');
             return;
         }
+        if (!form.rfidCode.trim()) {
+            alert('Kode RFID barang wajib diisi.');
+            return;
+        }
+        if (!form.locationId) {
+            alert('Silakan pilih lokasi barang.');
+            return;
+        }
 
         const duplicateCode = items.some(
             (item) =>
@@ -460,53 +497,77 @@ export default function DataBarang() {
             return;
         }
 
-        const payload: Item = {
-            id: editingId ?? Date.now(),
-            code: form.code.trim(),
-            name: form.name.trim(),
-            category: form.category,
-            brand: form.brand.trim(),
-            model: form.model.trim(),
-            specification: form.specification.trim(),
-            unit: form.unit,
-            responsiblePerson: form.responsiblePerson.trim(),
-            description: form.description.trim(),
-            status: form.status,
-            images: [...form.images],
-            imageNames: [...form.imageNames],
-            createdAt:
-                editingId !== null
-                    ? items.find((item) => item.id === editingId)?.createdAt ??
-                      new Date().toISOString().slice(0, 10)
-                    : new Date().toISOString().slice(0, 10),
-        };
-
-        if (editingId !== null) {
-            setItems((previous) =>
-                previous.map((item) =>
-                    item.id === editingId ? payload : item,
-                ),
-            );
-        } else {
-            setItems((previous) => [payload, ...previous]);
-            setCurrentPage(1);
+        const duplicateRfid = items.some(
+            (item) =>
+                item.id !== editingId &&
+                item.rfidCode.toLowerCase() ===
+                    form.rfidCode.trim().toLowerCase(),
+        );
+        if (duplicateRfid) {
+            alert('Kode RFID sudah terdaftar pada barang lain.');
+            return;
         }
 
-        closeModal();
+        const data = new FormData();
+        data.set('code', form.code.trim());
+        data.set('name', form.name.trim());
+        data.set('category', form.category);
+        data.set('brand', form.brand.trim());
+        data.set('model', form.model.trim());
+        data.set('specification', form.specification.trim());
+        data.set('unit', form.unit);
+        data.set('locationId', form.locationId);
+        data.set('responsiblePerson', form.responsiblePerson.trim());
+        data.set('description', form.description.trim());
+        data.set('status', form.status);
+        data.set('rfidCode', form.rfidCode.trim());
+        data.set(
+            'retainedImages',
+            JSON.stringify(
+                form.images
+                    .filter((image) => !image.file)
+                    .map((image) => image.src),
+            ),
+        );
+        form.images.forEach((image) => {
+            if (image.file) data.append('images', image.file);
+        });
+
+        setSaving(true);
+        try {
+            await managementRequest<{ item: Item }>(
+                editingId
+                    ? `/api/admin/items/${editingId}`
+                    : '/api/admin/items',
+                {
+                    method: editingId ? 'PATCH' : 'POST',
+                    body: data,
+                },
+            );
+            await loadItems();
+            setCurrentPage(1);
+            closeModal();
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+        } finally {
+            setSaving(false);
+        }
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
         if (deleteId === null) return;
 
-        setItems((previous) =>
-            previous.filter((item) => item.id !== deleteId),
-        );
-
-        if (detailItem?.id === deleteId) {
-            setDetailItem(null);
+        try {
+            await managementRequest<{ deleted: boolean }>(
+                `/api/admin/items/${deleteId}`,
+                { method: 'DELETE' },
+            );
+            await loadItems();
+            if (detailItem?.id === deleteId) setDetailItem(null);
+            setDeleteId(null);
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
         }
-
-        setDeleteId(null);
     }
 
     return (
@@ -552,6 +613,7 @@ export default function DataBarang() {
                     <button
                         type="button"
                         onClick={openCreateModal}
+                        disabled={loading}
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
                     >
                         <Icon name="plus" size={17} />
@@ -596,7 +658,7 @@ export default function DataBarang() {
                                         setSearch(event.target.value);
                                         setCurrentPage(1);
                                     }}
-                                    placeholder="Cari kode atau nama barang..."
+                                    placeholder="Cari kode, nama, RFID, atau model barang..."
                                     className={`${inputClass} pl-9 sm:w-64`}
                                 />
                             </div>
@@ -629,16 +691,33 @@ export default function DataBarang() {
                                 <option value="Aktif">Aktif</option>
                                 <option value="Tidak Aktif">Tidak Aktif</option>
                             </select>
+
+                            <select
+                                value={locationFilter}
+                                onChange={(event) => {
+                                    setLocationFilter(event.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                className={inputClass}
+                            >
+                                <option value="Semua">Semua Lokasi</option>
+                                {locations.map((location) => (
+                                    <option key={location.id} value={location.id}>
+                                        {location.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[900px] text-left text-sm">
+                        <table className="w-full min-w-[1000px] text-left text-sm">
                             <thead className="bg-neutral-50 text-xs text-neutral-500">
                                 <tr>
                                     <th className="px-5 py-4 font-semibold">Foto / Barang</th>
                                     <th className="px-5 py-4 font-semibold">Kode</th>
                                     <th className="px-5 py-4 font-semibold">Kategori</th>
+                                    <th className="px-5 py-4 font-semibold">Lokasi</th>
                                     <th className="px-5 py-4 font-semibold">Merek / Model</th>
                                     <th className="px-5 py-4 font-semibold">Satuan</th>
                                     <th className="px-5 py-4 font-semibold">Status</th>
@@ -660,7 +739,6 @@ export default function DataBarang() {
                                                         if (item.images[0]) {
                                                             setImagePreview({
                                                                 images: item.images,
-                                                                imageNames: item.imageNames,
                                                                 index: 0,
                                                                 entityName: item.name,
                                                             });
@@ -691,6 +769,9 @@ export default function DataBarang() {
                                                     <p className="mt-1 text-xs text-neutral-400">
                                                         {item.images.length} foto
                                                     </p>
+                                                    <p className="mt-1 text-[10px] text-neutral-400">
+                                                        RFID: {item.rfidCode}
+                                                    </p>
                                                 </div>
                                             </div>
                                         </td>
@@ -703,6 +784,10 @@ export default function DataBarang() {
                                             <span className="rounded-lg bg-neutral-100 px-2.5 py-1.5 text-xs font-medium text-neutral-600">
                                                 {item.category}
                                             </span>
+                                        </td>
+
+                                        <td className="px-5 py-4 text-xs text-neutral-600">
+                                            {getLocationName(item.locationId)}
                                         </td>
 
                                         <td className="px-5 py-4">
@@ -726,6 +811,16 @@ export default function DataBarang() {
 
                                         <td className="px-5 py-4">
                                             <div className="flex justify-end gap-1">
+                                                <button
+                                                    type="button"
+                                                    title="Duplikasi"
+                                                    aria-label={`Duplikasi barang ${item.name}`}
+                                                    onClick={() => void duplicateItem(item)}
+                                                    className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                                                >
+                                                    <Icon name="copy" size={16} />
+                                                </button>
+
                                                 <button
                                                     type="button"
                                                     title="Detail"
@@ -759,18 +854,22 @@ export default function DataBarang() {
 
                                 {paginatedItems.length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="px-5 py-14 text-center">
+                                        <td colSpan={8} className="px-5 py-14 text-center">
                                             <Icon
                                                 name="package"
                                                 size={30}
                                                 className="mx-auto mb-3 text-neutral-300"
                                             />
                                             <p className="font-semibold text-neutral-700">
-                                                Barang tidak ditemukan
+                                                {loading
+                                                    ? 'Memuat data barang...'
+                                                    : 'Barang tidak ditemukan'}
                                             </p>
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                Ubah kata kunci atau filter pencarian.
-                                            </p>
+                                            {!loading && (
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    Ubah kata kunci atau filter pencarian.
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 )}
@@ -826,8 +925,8 @@ export default function DataBarang() {
                 </section>
 
                 <p className="text-xs text-neutral-400">
-                    Data master barang menjadi referensi saat membuat data aset.
-                    Data saat ini masih berupa ilustrasi frontend.
+                    Data barang dan foto tersimpan di database FAMS. Setiap barang memiliki
+                    kode RFID unik untuk identifikasi aset.
                 </p>
             </div>
 
@@ -886,6 +985,7 @@ export default function DataBarang() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: BRG-001"
+                                            maxLength={40}
                                         />
                                     </Field>
 
@@ -898,6 +998,7 @@ export default function DataBarang() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: Laptop Lenovo ThinkPad"
+                                            maxLength={255}
                                         />
                                     </Field>
 
@@ -914,6 +1015,35 @@ export default function DataBarang() {
                                             {masterCategories.map((category) => (
                                                 <option key={category} value={category}>
                                                     {category}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </Field>
+
+                                    <Field label="Lokasi Barang" required>
+                                        <select
+                                            required
+                                            value={form.locationId}
+                                            disabled={locations.length === 0}
+                                            onChange={(event) =>
+                                                updateForm(
+                                                    'locationId',
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className={inputClass}
+                                        >
+                                            <option value="">
+                                                {locations.length === 0
+                                                    ? 'Tambahkan lokasi terlebih dahulu'
+                                                    : 'Pilih lokasi'}
+                                            </option>
+                                            {locations.map((location) => (
+                                                <option
+                                                    key={location.id}
+                                                    value={location.id}
+                                                >
+                                                    {location.name}
                                                 </option>
                                             ))}
                                         </select>
@@ -948,6 +1078,7 @@ export default function DataBarang() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: Lenovo"
+                                            maxLength={255}
                                         />
                                     </Field>
 
@@ -959,6 +1090,7 @@ export default function DataBarang() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: ThinkPad E14"
+                                            maxLength={255}
                                         />
                                     </Field>
 
@@ -974,7 +1106,28 @@ export default function DataBarang() {
                                             }
                                             className={inputClass}
                                             placeholder="Nama penanggung jawab barang"
+                                            maxLength={255}
                                         />
+                                    </Field>
+
+                                    <Field label="Kode RFID (UID Tag)" required>
+                                        <input
+                                            required
+                                            value={form.rfidCode}
+                                            onChange={(event) =>
+                                                updateForm(
+                                                    'rfidCode',
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className={inputClass}
+                                            placeholder="Scan atau masukkan UID tag RFID"
+                                            maxLength={100}
+                                        />
+                                        <p className="text-[11px] text-neutral-400">
+                                            Gunakan UID yang sama dengan tag fisik. Kode
+                                            RFID tidak dapat digunakan oleh barang atau ruangan lain.
+                                        </p>
                                     </Field>
                                 </div>
                             </section>
@@ -997,8 +1150,14 @@ export default function DataBarang() {
                                                 type="button"
                                                 onClick={() =>
                                                     setImagePreview({
-                                                        images: form.images,
-                                                        imageNames: form.imageNames,
+                                                        images: form.images.map(
+                                                            (image) => image.src,
+                                                        ),
+                                                        imageNames:
+                                                            form.images.map(
+                                                                (image) =>
+                                                                    image.name,
+                                                            ),
                                                         index: 0,
                                                         entityName: form.name || 'Barang',
                                                     })
@@ -1006,7 +1165,7 @@ export default function DataBarang() {
                                                 className="h-full w-full"
                                             >
                                                 <img
-                                                    src={form.images[0]}
+                                                    src={form.images[0].src}
                                                     alt="Preview barang"
                                                     className="h-full w-full object-cover"
                                                 />
@@ -1031,7 +1190,7 @@ export default function DataBarang() {
                                         </div>
 
                                         <p className="mt-1 text-xs leading-5 text-neutral-500">
-                                            Format JPG, PNG, atau WEBP.
+                                            Format JPG, PNG, atau WEBP; maksimal 5 MB per foto.
                                         </p>
 
                                         <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -1054,7 +1213,6 @@ export default function DataBarang() {
                                                         setForm((previous) => ({
                                                             ...previous,
                                                             images: [],
-                                                            imageNames: [],
                                                         }))
                                                     }
                                                     className="text-xs font-medium text-neutral-500 hover:text-neutral-950"
@@ -1080,15 +1238,21 @@ export default function DataBarang() {
                                     <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
                                         {form.images.map((image, index) => (
                                             <div
-                                                key={`${image.slice(0, 30)}-${index}`}
+                                                key={`${image.name}-${index}`}
                                                 className="group relative aspect-square overflow-hidden rounded-xl border border-neutral-200 bg-white"
                                             >
                                                 <button
                                                     type="button"
                                                     onClick={() =>
                                                         setImagePreview({
-                                                            images: form.images,
-                                                            imageNames: form.imageNames,
+                                                            images: form.images.map(
+                                                                (item) => item.src,
+                                                            ),
+                                                            imageNames:
+                                                                form.images.map(
+                                                                    (item) =>
+                                                                        item.name,
+                                                                ),
                                                             index,
                                                             entityName: form.name || 'Barang',
                                                         })
@@ -1096,7 +1260,7 @@ export default function DataBarang() {
                                                     className="h-full w-full"
                                                 >
                                                     <img
-                                                        src={image}
+                                                        src={image.src}
                                                         alt={`Foto barang ${index + 1}`}
                                                         className="h-full w-full object-cover"
                                                     />
@@ -1192,9 +1356,14 @@ export default function DataBarang() {
 
                             <button
                                 type="submit"
-                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
+                                disabled={saving}
+                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-60"
                             >
-                                {editingId !== null ? 'Simpan Perubahan' : 'Simpan Barang'}
+                                {saving
+                                    ? 'Menyimpan...'
+                                    : editingId !== null
+                                      ? 'Simpan Perubahan'
+                                      : 'Simpan Barang'}
                             </button>
                         </div>
                     </form>
@@ -1252,7 +1421,6 @@ export default function DataBarang() {
                                                 onClick={() =>
                                                     setImagePreview({
                                                         images: detailItem.images,
-                                                        imageNames: detailItem.imageNames,
                                                         index,
                                                         entityName: detailItem.name,
                                                     })
@@ -1307,8 +1475,10 @@ export default function DataBarang() {
 
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <DetailBox label="Kode Barang" value={detailItem.code} />
+                                    <DetailBox label="Kode RFID" value={detailItem.rfidCode} />
                                     <DetailBox label="Nama Barang" value={detailItem.name} />
                                     <DetailBox label="Kategori" value={detailItem.category} />
+                                    <DetailBox label="Lokasi" value={getLocationName(detailItem.locationId)} />
                                     <DetailBox label="Satuan" value={detailItem.unit} />
                                     <DetailBox label="Merek" value={detailItem.brand || '-'} />
                                     <DetailBox label="Model / Tipe" value={detailItem.model || '-'} />

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { usePage } from '@inertiajs/react';
+import { usePage } from '@/lib/next-compat';
 import Sidebar from '../dashboard/Sidebar';
 import Header from '../dashboard/Header';
 

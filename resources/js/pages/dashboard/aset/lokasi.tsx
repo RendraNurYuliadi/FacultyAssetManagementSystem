@@ -8,11 +8,17 @@ import AssetManagementBanner from '../../../components/dashboard/AssetManagement
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '../../../lib/management-client';
+import { nextNumberedUniqueValue } from '../../../lib/duplicate';
+import { copyStoredImage } from '../../../lib/image-file';
 
 type LocationType = 'Gedung' | 'Area' | 'Kompleks' | 'Lainnya';
 
 type Location = {
-    id: number;
+    id: string;
     code: string;
     name: string;
     type: LocationType;
@@ -22,7 +28,12 @@ type Location = {
     phone: string;
     description: string;
     images: string[];
-    imageNames?: string[];
+};
+
+type LocationFormImage = {
+    src: string;
+    name: string;
+    file?: File;
 };
 
 type LocationForm = {
@@ -34,8 +45,7 @@ type LocationForm = {
     responsible: string;
     phone: string;
     description: string;
-    images: string[];
-    imageNames: string[];
+    images: LocationFormImage[];
 };
 
 const MAX_IMAGES = 10;
@@ -48,82 +58,6 @@ const locationTypeStyles: Record<LocationType, string> = {
     Lainnya: 'bg-neutral-100 text-neutral-600',
 };
 
-const initialLocations: Location[] = [
-    {
-        id: 1,
-        code: 'FAMS-LKS-001',
-        name: 'Gedung Fakultas Teknologi Informasi',
-        type: 'Gedung',
-        address: 'Jl. Angkrek Situ No. 19, Sumedang, Jawa Barat',
-        area: 'Area Kampus Utama',
-        responsible: 'Bagian Administrasi FTI',
-        phone: '0261-202911',
-        description:
-            'Gedung utama Fakultas Teknologi Informasi yang digunakan untuk kegiatan akademik, administrasi, dan aktivitas fakultas.',
-        images: [
-            'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800',
-            'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800',
-        ],
-    },
-    {
-        id: 2,
-        code: 'FAMS-LKS-002',
-        name: 'Gedung Rektorat',
-        type: 'Gedung',
-        address: 'Area Kampus Universitas Sebelas April, Sumedang',
-        area: 'Area Kampus Utama',
-        responsible: 'Bagian Umum Universitas',
-        phone: '0261-202911',
-        description:
-            'Gedung pusat administrasi dan pelayanan universitas.',
-        images: [
-            'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800',
-        ],
-    },
-    {
-        id: 3,
-        code: 'FAMS-LKS-003',
-        name: 'Gedung Laboratorium',
-        type: 'Gedung',
-        address: 'Area Kampus Universitas Sebelas April, Sumedang',
-        area: 'Area Laboratorium',
-        responsible: 'Kepala Laboratorium',
-        phone: '0812-0000-0003',
-        description:
-            'Gedung yang digunakan untuk kegiatan praktikum dan pengembangan teknologi.',
-        images: [
-            'https://images.unsplash.com/photo-1581092921461-eab62e97a780?w=800',
-        ],
-    },
-    {
-        id: 4,
-        code: 'FAMS-LKS-004',
-        name: 'Area Parkir Fakultas',
-        type: 'Area',
-        address: 'Halaman depan Gedung Fakultas Teknologi Informasi',
-        area: 'Area Kampus Utama',
-        responsible: 'Petugas Keamanan',
-        phone: '0812-0000-0004',
-        description: 'Area parkir kendaraan mahasiswa, dosen, dan staf.',
-        images: [],
-    },
-    {
-        id: 5,
-        code: 'FAMS-LKS-005',
-        name: 'Area Kegiatan Mahasiswa',
-        type: 'Area',
-        address: 'Lingkungan Fakultas Teknologi Informasi',
-        area: 'Area Kampus Utama',
-        responsible: 'Bagian Kemahasiswaan',
-        phone: '0812-0000-0005',
-        description:
-            'Area yang digunakan untuk mendukung kegiatan organisasi dan aktivitas mahasiswa.',
-        images: [
-            'https://images.unsplash.com/photo-1523580494863-6f3031224c94?w=800',
-        ],
-    },
-];
-
 const emptyForm: LocationForm = {
     code: '',
     name: '',
@@ -134,7 +68,6 @@ const emptyForm: LocationForm = {
     phone: '',
     description: '',
     images: [],
-    imageNames: [],
 };
 
 const inputClass =
@@ -161,44 +94,62 @@ function Field({
 }
 
 export default function DataLokasi() {
-    const [locations, setLocations] = useState<Location[]>(initialLocations);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState('Semua');
     const [currentPage, setCurrentPage] = useState(1);
 
     const [modalOpen, setModalOpen] = useState(false);
-    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState<LocationForm>(emptyForm);
+    const [saving, setSaving] = useState(false);
 
     const [detailLocation, setDetailLocation] =
         useState<Location | null>(null);
-    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
 
     const [imagePreview, setImagePreview] =
         useState<ImagePreviewState | null>(null);
 
+    async function loadLocations() {
+        const result = await managementRequest<{ locations: Location[] }>(
+            '/api/admin/locations',
+        );
+        setLocations(result.locations);
+    }
+
     useEffect(() => {
-        if (!imagePreview) return;
-
-        function handleKeyDown(event: KeyboardEvent) {
-            if (event.key === 'Escape') {
-                setImagePreview(null);
-            }
-        }
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [imagePreview]);
+        let active = true;
+        managementRequest<{ locations: Location[] }>('/api/admin/locations')
+            .then((result) => {
+                if (active) setLocations(result.locations);
+            })
+            .catch((error: unknown) => {
+                if (active) alert(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const filteredLocations = useMemo(() => {
         return locations.filter((location) => {
             const keyword = search.toLowerCase().trim();
 
-            const matchesSearch =
-                location.name.toLowerCase().includes(keyword) ||
-                location.code.toLowerCase().includes(keyword) ||
-                location.address.toLowerCase().includes(keyword) ||
-                location.area.toLowerCase().includes(keyword);
+            const matchesSearch = [
+                location.name,
+                location.code,
+                location.type,
+                location.address,
+                location.area,
+                location.responsible,
+                location.phone,
+                location.description,
+            ].some((value) => value.toLowerCase().includes(keyword));
 
             const matchesType =
                 typeFilter === 'Semua' || location.type === typeFilter;
@@ -263,6 +214,49 @@ export default function DataLokasi() {
         setModalOpen(true);
     }
 
+    async function duplicateLocation(location: Location) {
+        let images: LocationFormImage[];
+        try {
+            images = await Promise.all(
+                location.images.map(async (src, index) => {
+                    const file = await copyStoredImage(
+                        src,
+                        `${location.code}-copy-${index + 1}`,
+                    );
+                    return {
+                        src: await readImage(file),
+                        name: file.name,
+                        file,
+                    };
+                }),
+            );
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+            return;
+        }
+
+        setEditingId(null);
+        setForm({
+            code: nextNumberedUniqueValue(
+                location.code,
+                locations.map((item) => item.code),
+                40,
+            ),
+            name: nextNumberedUniqueValue(
+                location.name,
+                locations.map((item) => item.name),
+            ),
+            type: location.type,
+            address: location.address,
+            area: location.area,
+            responsible: location.responsible,
+            phone: location.phone,
+            description: location.description,
+            images,
+        });
+        setModalOpen(true);
+    }
+
     function openEditModal(location: Location) {
         setEditingId(location.id);
 
@@ -275,10 +269,10 @@ export default function DataLokasi() {
             responsible: location.responsible,
             phone: location.phone,
             description: location.description,
-            images: [...location.images],
-            imageNames:
-                location.imageNames ??
-                location.images.map((_, index) => `Foto ${index + 1}`),
+            images: location.images.map((src, index) => ({
+                src,
+                name: `Foto ${index + 1}`,
+            })),
         });
 
         setModalOpen(true);
@@ -327,11 +321,13 @@ export default function DataLokasi() {
         }
 
         const validFiles = files.filter((file) =>
-            ['image/jpeg', 'image/png', 'image/webp'].includes(file.type),
+            ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) &&
+            file.size > 0 &&
+            file.size <= 5 * 1024 * 1024,
         );
 
         if (validFiles.length !== files.length) {
-            alert('Format gambar harus JPG, PNG, atau WEBP.');
+            alert('Foto harus JPG, PNG, atau WEBP dan maksimal 5 MB per file.');
         }
 
         const selectedFiles = validFiles.slice(0, remainingSlots);
@@ -346,22 +342,23 @@ export default function DataLokasi() {
 
         try {
             const imageResults = await Promise.all(
-                selectedFiles.map((file) => readImage(file)),
+                selectedFiles.map(async (file) => ({
+                    src: await readImage(file),
+                    name: file.name,
+                    file,
+                })),
             );
 
             setForm((previous) => ({
                 ...previous,
-                images: [...previous.images, ...imageResults].slice(
-                    0,
-                    MAX_IMAGES,
-                ),
-                imageNames: [
-                    ...previous.imageNames,
-                    ...selectedFiles.map((file) => file.name),
-                ].slice(0, MAX_IMAGES),
+                images: [...previous.images, ...imageResults].slice(0, MAX_IMAGES),
             }));
-        } catch {
-            alert('Ada gambar yang gagal dibaca. Silakan coba kembali.');
+        } catch (error: unknown) {
+            alert(
+                error instanceof Error
+                    ? error.message
+                    : 'Ada gambar yang gagal dibaca. Silakan coba kembali.',
+            );
         }
     }
 
@@ -371,13 +368,10 @@ export default function DataLokasi() {
             images: previous.images.filter(
                 (_, imageIndex) => imageIndex !== index,
             ),
-            imageNames: previous.imageNames.filter(
-                (_, imageIndex) => imageIndex !== index,
-            ),
         }));
     }
 
-    function saveLocation(event: FormEvent<HTMLFormElement>) {
+    async function saveLocation(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         if (!form.name.trim()) {
@@ -392,7 +386,8 @@ export default function DataLokasi() {
 
         const duplicateCode = locations.some(
             (location) =>
-                location.code.toLowerCase() === form.code.trim().toLowerCase() &&
+                location.code.toLowerCase() ===
+                    form.code.trim().toLowerCase() &&
                 location.id !== editingId,
         );
 
@@ -401,45 +396,62 @@ export default function DataLokasi() {
             return;
         }
 
-        const payload: Location = {
-            id: editingId ?? Date.now(),
-            code: form.code.trim(),
-            name: form.name.trim(),
-            type: form.type,
-            address: form.address.trim(),
-            area: form.area.trim(),
-            responsible: form.responsible.trim(),
-            phone: form.phone.trim(),
-            description: form.description.trim(),
-            images: [...form.images],
-            imageNames: [...form.imageNames],
-        };
+        const data = new FormData();
+        data.set('code', form.code.trim());
+        data.set('name', form.name.trim());
+        data.set('type', form.type);
+        data.set('address', form.address.trim());
+        data.set('area', form.area.trim());
+        data.set('responsible', form.responsible.trim());
+        data.set('phone', form.phone.trim());
+        data.set('description', form.description.trim());
+        data.set(
+            'retainedImages',
+            JSON.stringify(
+                form.images
+                    .filter((image) => !image.file)
+                    .map((image) => image.src),
+            ),
+        );
+        form.images.forEach((image) => {
+            if (image.file) data.append('images', image.file);
+        });
 
-        if (editingId !== null) {
-            setLocations((previous) =>
-                previous.map((location) =>
-                    location.id === editingId ? payload : location,
-                ),
+        setSaving(true);
+        try {
+            await managementRequest<{ location: Location }>(
+                editingId
+                    ? `/api/admin/locations/${editingId}`
+                    : '/api/admin/locations',
+                {
+                    method: editingId ? 'PATCH' : 'POST',
+                    body: data,
+                },
             );
-        } else {
-            setLocations((previous) => [payload, ...previous]);
+            await loadLocations();
             setCurrentPage(1);
+            closeModal();
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+        } finally {
+            setSaving(false);
         }
-
-        setModalOpen(false);
-        setEditingId(null);
-        setForm(emptyForm);
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
         if (deleteId === null) return;
 
-        setLocations((previous) =>
-            previous.filter((location) => location.id !== deleteId),
-        );
-
-        setDeleteId(null);
-        setDetailLocation(null);
+        try {
+            await managementRequest<{ deleted: boolean }>(
+                `/api/admin/locations/${deleteId}`,
+                { method: 'DELETE' },
+            );
+            await loadLocations();
+            setDeleteId(null);
+            setDetailLocation(null);
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+        }
     }
 
     function closeModal() {
@@ -602,7 +614,6 @@ export default function DataLokasi() {
                                                         if (location.images[0]) {
                                                             setImagePreview({
                                                                 images: location.images,
-                                                                imageNames: location.imageNames,
                                                                 index: 0,
                                                                 entityName: location.name,
                                                             });
@@ -666,6 +677,20 @@ export default function DataLokasi() {
                                             <div className="flex justify-end gap-1">
                                                 <button
                                                     type="button"
+                                                    title="Duplikasi"
+                                                    aria-label={`Duplikasi lokasi ${location.name}`}
+                                                    onClick={() =>
+                                                        void duplicateLocation(
+                                                            location,
+                                                        )
+                                                    }
+                                                    className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                                                >
+                                                    <Icon name="copy" size={16} />
+                                                </button>
+
+                                                <button
+                                                    type="button"
                                                     title="Detail"
                                                     onClick={() =>
                                                         setDetailLocation(location)
@@ -713,11 +738,15 @@ export default function DataLokasi() {
                                                 className="mx-auto mb-3 text-neutral-300"
                                             />
                                             <p className="font-semibold text-neutral-700">
-                                                Lokasi tidak ditemukan
+                                                {loading
+                                                    ? 'Memuat data lokasi...'
+                                                    : 'Lokasi tidak ditemukan'}
                                             </p>
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                Ubah kata kunci atau filter pencarian.
-                                            </p>
+                                            {!loading && (
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    Ubah kata kunci atau filter pencarian, atau tambahkan data lokasi.
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 )}
@@ -775,8 +804,7 @@ export default function DataLokasi() {
                 </section>
 
                 <p className="text-xs text-neutral-400">
-                    Data saat ini merupakan ilustrasi frontend dan belum
-                    tersimpan ke database.
+                    Data lokasi dan foto tersimpan di database FAMS.
                 </p>
             </div>
 
@@ -835,6 +863,7 @@ export default function DataLokasi() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: FAMS-LKS-001"
+                                            maxLength={40}
                                         />
                                     </Field>
 
@@ -870,6 +899,7 @@ export default function DataLokasi() {
                                                 }
                                                 className={inputClass}
                                                 placeholder="Contoh: Gedung Fakultas Teknologi Informasi"
+                                                maxLength={255}
                                             />
                                         </Field>
                                     </div>
@@ -888,6 +918,7 @@ export default function DataLokasi() {
                                                 }
                                                 className={inputClass}
                                                 placeholder="Masukkan alamat lengkap lokasi..."
+                                                maxLength={1000}
                                             />
                                         </Field>
                                     </div>
@@ -903,6 +934,7 @@ export default function DataLokasi() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: Area Kampus Utama"
+                                            maxLength={255}
                                         />
                                     </Field>
 
@@ -917,6 +949,7 @@ export default function DataLokasi() {
                                             }
                                             className={inputClass}
                                             placeholder="Nama bagian atau petugas"
+                                            maxLength={255}
                                         />
                                     </Field>
 
@@ -932,6 +965,7 @@ export default function DataLokasi() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: 0261-202911"
+                                            maxLength={30}
                                         />
                                     </Field>
                                 </div>
@@ -950,8 +984,14 @@ export default function DataLokasi() {
                                                 type="button"
                                                 onClick={() =>
                                                     setImagePreview({
-                                                        images: form.images,
-                                                        imageNames: form.imageNames,
+                                                        images: form.images.map(
+                                                            (image) => image.src,
+                                                        ),
+                                                        imageNames:
+                                                            form.images.map(
+                                                                (image) =>
+                                                                    image.name,
+                                                            ),
                                                         index: 0,
                                                         entityName: form.name || 'Lokasi',
                                                     })
@@ -960,7 +1000,7 @@ export default function DataLokasi() {
                                                 title="Lihat foto lokasi"
                                             >
                                                 <img
-                                                    src={form.images[0]}
+                                                    src={form.images[0].src}
                                                     alt="Preview foto lokasi"
                                                     className="h-full w-full object-cover"
                                                 />
@@ -1013,7 +1053,6 @@ export default function DataLokasi() {
                                                         setForm((previous) => ({
                                                             ...previous,
                                                             images: [],
-                                                            imageNames: [],
                                                         }))
                                                     }
                                                     className="text-xs font-medium text-neutral-500 transition hover:text-neutral-950"
@@ -1037,7 +1076,7 @@ export default function DataLokasi() {
                                         />
 
                                         <p className="mt-2 text-[10px] text-neutral-400">
-                                            Format JPG, PNG, atau WEBP.
+                                            Format JPG, PNG, atau WEBP, maksimal 5 MB per foto.
                                         </p>
                                     </div>
                                 </div>
@@ -1046,15 +1085,21 @@ export default function DataLokasi() {
                                     <div className="flex flex-wrap gap-3">
                                         {form.images.map((image, index) => (
                                             <div
-                                                key={`${image.slice(0, 30)}-${index}`}
+                                                key={`${image.name}-${index}`}
                                                 className="group relative h-16 w-16 overflow-hidden rounded-lg border border-neutral-200 bg-white"
                                             >
                                                 <button
                                                     type="button"
                                                     onClick={() =>
                                                         setImagePreview({
-                                                            images: form.images,
-                                                            imageNames: form.imageNames,
+                                                            images: form.images.map(
+                                                                (item) => item.src,
+                                                            ),
+                                                            imageNames:
+                                                                form.images.map(
+                                                                    (item) =>
+                                                                        item.name,
+                                                                ),
                                                             index,
                                                             entityName: form.name || 'Lokasi',
                                                         })
@@ -1063,7 +1108,7 @@ export default function DataLokasi() {
                                                     title={`Lihat foto ${index + 1}`}
                                                 >
                                                     <img
-                                                        src={image}
+                                                        src={image.src}
                                                         alt={`Foto lokasi ${index + 1}`}
                                                         className="h-full w-full object-cover"
                                                     />
@@ -1103,6 +1148,7 @@ export default function DataLokasi() {
                                         }
                                         className={inputClass}
                                         placeholder="Tambahkan keterangan mengenai lokasi..."
+                                        maxLength={2000}
                                     />
                                 </Field>
                             </section>
@@ -1119,11 +1165,14 @@ export default function DataLokasi() {
 
                             <button
                                 type="submit"
-                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
+                                disabled={saving}
+                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
                             >
-                                {editingId !== null
-                                    ? 'Simpan Perubahan'
-                                    : 'Simpan Lokasi'}
+                                {saving
+                                    ? 'Menyimpan...'
+                                    : editingId !== null
+                                      ? 'Simpan Perubahan'
+                                      : 'Simpan Lokasi'}
                             </button>
                         </div>
                     </form>
@@ -1176,7 +1225,6 @@ export default function DataLokasi() {
                                                     onClick={() =>
                                                         setImagePreview({
                                                             images: detailLocation.images,
-                                                            imageNames: detailLocation.imageNames,
                                                             index,
                                                             entityName: detailLocation.name,
                                                         })

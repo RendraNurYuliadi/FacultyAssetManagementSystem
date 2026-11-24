@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link, usePage } from '@/lib/next-compat';
 import Icon from '../Icon';
 import SidebarMenu from './SidebarMenu';
 import { dashboardMenu, settingsMenu } from '../config/dashboard-menu';

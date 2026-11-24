@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@/lib/next-compat';
 import AuthInput from '../../components/auth/AuthInput';
 import PasswordInput from '../../components/auth/PasswordInput';
 import Icon from '../../components/Icon';
@@ -670,6 +670,20 @@ export default function Register() {
                                                     error={
                                                         errors.identity_number
                                                     }
+                                                />
+
+                                                <AuthInput
+                                                    label="FAKULTAS"
+                                                    name="faculty"
+                                                    placeholder="Masukkan nama fakultas"
+                                                    value={data.faculty}
+                                                    onChange={(e) =>
+                                                        setData(
+                                                            'faculty',
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    error={errors.faculty}
                                                 />
 
                                                 <AuthInput

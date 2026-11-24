@@ -1,5 +1,7 @@
 # FAMS Dashboard: Kondisi Project Saat Ini
 
+> Dokumen ini mencatat kondisi dashboard sebelum migrasi Laravel/Inertia ke Next.js. Detail routing Laravel dan Inertia di bawah merupakan riwayat implementasi, bukan instruksi menjalankan aplikasi saat ini. Lihat [README.md](./README.md) untuk stack, cara menjalankan, autentikasi MongoDB, dan deployment Vercel yang sekarang.
+
 Dokumen ini merangkum implementasi dashboard yang saat ini ada di project lokal FAMS. Isi source code di repository adalah sumber utama jika ada perubahan setelah dokumen ini dibuat.
 
 ## Stack dan cara halaman dirender

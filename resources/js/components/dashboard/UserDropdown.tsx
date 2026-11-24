@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { router, usePage } from '@inertiajs/react';
+import { router, usePage } from '@/lib/next-compat';
 import Icon from '../Icon';
 
 export default function UserDropdown() {

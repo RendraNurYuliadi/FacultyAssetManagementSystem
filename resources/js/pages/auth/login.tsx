@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@/lib/next-compat';
 import AuthInput from '../../components/auth/AuthInput';
 import PasswordInput from '../../components/auth/PasswordInput';
 import Icon from '../../components/Icon';

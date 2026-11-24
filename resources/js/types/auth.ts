@@ -1,14 +1,24 @@
+export type UserRole = 'admin' | 'pengelola' | 'peminjam';
+
 export type User = {
-    id: number;
+    id: string;
     name: string;
     email: string;
+    role: UserRole;
     avatar?: string;
-    email_verified_at: string | null;
-    created_at: string;
-    updated_at: string;
-    [key: string]: unknown; // This allows for additional properties...
+    phone?: string;
+    borrower_type?: string;
+    identity_number?: string;
+    faculty?: string;
+    study_program?: string;
+    enrollment_year?: number;
+    unit_name?: string;
+    position?: string;
+    organization_name?: string;
+    borrowing_context?: string;
+    address?: string;
 };
 
 export type Auth = {
-    user: User;
+    user: User | null;
 };

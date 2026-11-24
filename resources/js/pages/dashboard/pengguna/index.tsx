@@ -1,96 +1,97 @@
 ﻿
-import { useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormEvent, HTMLInputTypeAttribute } from 'react';
 
 import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
+import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
+import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '../../../lib/management-client';
+import {
+    nextNumberedEmail,
+    nextNumberedUniqueValue,
+} from '../../../lib/duplicate';
+import { copyStoredImage } from '../../../lib/image-file';
 
 type UserRole = 'admin' | 'pengelola' | 'peminjam';
+type BorrowerType = 'mahasiswa' | 'dosen' | 'staf' | 'eksternal';
 
 type User = {
-    id: number;
+    id: string;
     name: string;
     email: string;
     phone: string;
     role: UserRole;
+    borrowerType: BorrowerType | '';
     identityNumber: string;
     faculty: string;
     studyProgram: string;
+    enrollmentYear: string;
+    unitName: string;
+    position: string;
+    organizationName: string;
+    borrowingContext: string;
+    address: string;
     createdAt: string;
+    avatar: string;
 };
 
-type UserForm = Omit<User, 'id' | 'createdAt'>;
+type UserForm = Omit<User, 'id' | 'createdAt'> & {
+    password: string;
+    passwordConfirmation: string;
+};
 
 const PER_PAGE = 5;
-
-const initialUsers: User[] = [
-    {
-        id: 1,
-        name: 'Rendra Nur Yuliadi',
-        email: 'rendra@example.com',
-        phone: '081234567890',
-        role: 'admin',
-        identityNumber: '240160121104',
-        faculty: 'Fakultas Teknologi Informasi',
-        studyProgram: 'Informatika',
-        createdAt: '2026-01-10',
-    },
-    {
-        id: 2,
-        name: 'Andi Setiawan',
-        email: 'andi@example.com',
-        phone: '081234567891',
-        role: 'pengelola',
-        identityNumber: '1987654321',
-        faculty: 'Fakultas Teknologi Informasi',
-        studyProgram: 'Informatika',
-        createdAt: '2026-01-12',
-    },
-    {
-        id: 3,
-        name: 'Siti Nurhaliza',
-        email: 'siti@example.com',
-        phone: '081234567892',
-        role: 'peminjam',
-        identityNumber: '240160121105',
-        faculty: 'Fakultas Teknologi Informasi',
-        studyProgram: 'Sistem Informasi',
-        createdAt: '2026-01-15',
-    },
-    {
-        id: 4,
-        name: 'Dimas Pratama',
-        email: 'dimas@example.com',
-        phone: '081234567893',
-        role: 'peminjam',
-        identityNumber: '240160121106',
-        faculty: 'Fakultas Teknologi Informasi',
-        studyProgram: 'Informatika',
-        createdAt: '2026-02-01',
-    },
-    {
-        id: 5,
-        name: 'Rizky Firmansyah',
-        email: 'rizky@example.com',
-        phone: '081234567894',
-        role: 'pengelola',
-        identityNumber: '1987654322',
-        faculty: 'Fakultas Teknologi Informasi',
-        studyProgram: '-',
-        createdAt: '2026-02-05',
-    },
-];
 
 const emptyForm: UserForm = {
     name: '',
     email: '',
     phone: '',
     role: 'peminjam',
+    borrowerType: 'mahasiswa',
     identityNumber: '',
     faculty: '',
     studyProgram: '',
+    enrollmentYear: '',
+    unitName: '',
+    position: '',
+    organizationName: '',
+    borrowingContext: 'pribadi',
+    address: '',
+    avatar: '',
+    password: '',
+    passwordConfirmation: '',
+};
+
+const borrowerOptions: {
+    value: BorrowerType;
+    label: string;
+    description: string;
+}[] = [
+    { value: 'mahasiswa', label: 'Mahasiswa', description: 'Mahasiswa aktif' },
+    { value: 'dosen', label: 'Dosen', description: 'Tenaga pengajar' },
+    {
+        value: 'staf',
+        label: 'Tenaga Kependidikan',
+        description: 'Staf dan pegawai kampus',
+    },
+    {
+        value: 'eksternal',
+        label: 'Pihak Eksternal',
+        description: 'Tamu, mitra, atau umum',
+    },
+];
+
+const borrowerLabels: Record<BorrowerType, string> = {
+    mahasiswa: 'Mahasiswa',
+    dosen: 'Dosen',
+    staf: 'Tenaga Kependidikan',
+    eksternal: 'Pihak Eksternal',
 };
 
 const roleLabels: Record<UserRole, string> = {
@@ -108,25 +109,137 @@ const roleStyles: Record<UserRole, string> = {
 const inputClass =
     'w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-3 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-500 focus:ring-2 focus:ring-neutral-100';
 
+function FormInput({
+    label,
+    name,
+    value,
+    placeholder,
+    onChange,
+    required = false,
+    type = 'text',
+    autoComplete,
+    min,
+    max,
+    maxLength,
+}: {
+    label: string;
+    name: string;
+    value: string;
+    placeholder: string;
+    onChange: (value: string) => void;
+    required?: boolean;
+    type?: HTMLInputTypeAttribute;
+    autoComplete?: string;
+    min?: number;
+    max?: number;
+    maxLength?: number;
+}) {
+    return (
+        <label className="block space-y-2">
+            <span className="text-xs font-semibold text-neutral-700">
+                {label}
+                {required && ' *'}
+            </span>
+            <input
+                id={name}
+                name={name}
+                required={required}
+                type={type}
+                min={min}
+                max={max}
+                maxLength={maxLength}
+                autoComplete={autoComplete}
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className={inputClass}
+                placeholder={placeholder}
+            />
+        </label>
+    );
+}
+
 export default function ManageUser() {
-    const [users, setUsers] = useState<User[]>(initialUsers);
+    const [users, setUsers] = useState<User[]>([]);
+    const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('Semua');
     const [currentPage, setCurrentPage] = useState(1);
 
     const [modalOpen, setModalOpen] = useState(false);
-    const [editingId, setEditingId] = useState<number | null>(null);
-    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     const [form, setForm] = useState<UserForm>(emptyForm);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState('');
+    const [previewModal, setPreviewModal] =
+        useState<ImagePreviewState | null>(null);
+    const [removePhoto, setRemovePhoto] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    const closePhotoPreview = useCallback(() => {
+        setPreviewModal(null);
+    }, []);
+
+    const changePhotoPreviewIndex = useCallback((index: number) => {
+        setPreviewModal((current) =>
+            current ? { ...current, index } : current,
+        );
+    }, []);
+
+    async function loadUsers() {
+        const result = await managementRequest<{ users: User[] }>(
+            '/api/admin/users',
+        );
+        setUsers(result.users);
+    }
+
+    useEffect(() => {
+        let active = true;
+        managementRequest<{ users: User[] }>('/api/admin/users')
+            .then((result) => {
+                if (active) setUsers(result.users);
+            })
+            .catch((error: unknown) => {
+                if (active) alert(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!photoFile) {
+            setPhotoPreview(form.avatar);
+            return;
+        }
+        const previewUrl = URL.createObjectURL(photoFile);
+        setPhotoPreview(previewUrl);
+        return () => URL.revokeObjectURL(previewUrl);
+    }, [photoFile, form.avatar]);
 
     const filteredUsers = useMemo(() => {
         const keyword = search.toLowerCase().trim();
 
         return users.filter((user) => {
-            const matchesSearch =
-                user.name.toLowerCase().includes(keyword) ||
-                user.email.toLowerCase().includes(keyword) ||
-                user.identityNumber.toLowerCase().includes(keyword);
+            const matchesSearch = [
+                user.name,
+                user.email,
+                user.phone,
+                user.role,
+                user.borrowerType,
+                user.identityNumber,
+                user.faculty,
+                user.studyProgram,
+                user.enrollmentYear,
+                user.unitName,
+                user.position,
+                user.organizationName,
+                user.borrowingContext,
+                user.address,
+            ].some((value) => value.toLowerCase().includes(keyword));
 
             const matchesRole =
                 roleFilter === 'Semua' || user.role === roleFilter;
@@ -173,6 +286,67 @@ export default function ManageUser() {
     function openCreateModal() {
         setEditingId(null);
         setForm(emptyForm);
+        setPhotoFile(null);
+        setRemovePhoto(false);
+        setPreviewModal(null);
+        setModalOpen(true);
+    }
+
+    async function duplicateUser(user: User) {
+        let email: string;
+        try {
+            email = nextNumberedEmail(
+                user.email,
+                users.map((item) => item.email),
+            );
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+            return;
+        }
+
+        let photoCopy: File | null = null;
+        try {
+            if (user.avatar) {
+                photoCopy = await copyStoredImage(
+                    user.avatar,
+                    `${user.name}-copy`,
+                );
+            }
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+            return;
+        }
+
+        setEditingId(null);
+        setForm({
+            name: nextNumberedUniqueValue(
+                user.name,
+                users.map((item) => item.name),
+            ),
+            email,
+            phone: user.phone,
+            role: user.role,
+            borrowerType: user.borrowerType,
+            identityNumber: nextNumberedUniqueValue(
+                user.identityNumber,
+                users.map((item) => item.identityNumber),
+                50,
+            ),
+            faculty: user.faculty,
+            studyProgram: user.studyProgram,
+            enrollmentYear: user.enrollmentYear,
+            unitName: user.unitName,
+            position: user.position,
+            organizationName: user.organizationName,
+            borrowingContext: user.borrowingContext,
+            address: user.address,
+            avatar: '',
+            password: '',
+            passwordConfirmation: '',
+        });
+        setPhotoFile(photoCopy);
+        setRemovePhoto(false);
+        setPreviewModal(null);
         setModalOpen(true);
     }
 
@@ -184,11 +358,26 @@ export default function ManageUser() {
             email: user.email,
             phone: user.phone,
             role: user.role,
+            borrowerType: user.borrowerType,
             identityNumber: user.identityNumber,
             faculty: user.faculty,
             studyProgram: user.studyProgram,
+            enrollmentYear: user.enrollmentYear,
+            unitName: user.unitName,
+            position: user.position,
+            organizationName: user.organizationName,
+            borrowingContext:
+                user.borrowingContext ||
+                (user.role === 'peminjam' ? 'pribadi' : ''),
+            address: user.address,
+            avatar: user.avatar,
+            password: '',
+            passwordConfirmation: '',
         });
 
+        setPhotoFile(null);
+        setRemovePhoto(false);
+        setPreviewModal(null);
         setModalOpen(true);
     }
 
@@ -202,7 +391,69 @@ export default function ManageUser() {
         }));
     }
 
-    function saveUser(event: FormEvent<HTMLFormElement>) {
+    function changeBorrowerType(borrowerType: BorrowerType) {
+        setForm((current) => ({
+            ...current,
+            borrowerType,
+            identityNumber: '',
+            faculty: '',
+            studyProgram: '',
+            enrollmentYear: '',
+            unitName: '',
+            position: '',
+            organizationName: '',
+            borrowingContext: 'pribadi',
+        }));
+    }
+
+    function changeRole(role: UserRole) {
+        setForm((current) => {
+            if (role === current.role) return current;
+            if (role === 'peminjam') {
+                return {
+                    ...current,
+                    role,
+                    borrowerType: 'mahasiswa',
+                    identityNumber: '',
+                    faculty: '',
+                    studyProgram: '',
+                    enrollmentYear: '',
+                    unitName: '',
+                    position: '',
+                    organizationName: '',
+                    borrowingContext: 'pribadi',
+                };
+            }
+            if (current.role === 'peminjam') {
+                return {
+                    ...current,
+                    role,
+                    borrowerType: '',
+                    identityNumber: '',
+                    faculty: '',
+                    studyProgram: '',
+                    enrollmentYear: '',
+                    unitName: '',
+                    position: '',
+                    organizationName: '',
+                    borrowingContext: '',
+                };
+            }
+            return { ...current, role, borrowerType: '' };
+        });
+    }
+
+    function openPhotoPreview() {
+        if (!photoPreview || removePhoto) return;
+        setPreviewModal({
+            images: [photoPreview],
+            imageNames: [photoFile?.name || form.name || 'Foto Profil'],
+            index: 0,
+            entityName: form.name || 'Foto Profil',
+        });
+    }
+
+    async function saveUser(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         const emailExists = users.some(
@@ -216,50 +467,70 @@ export default function ManageUser() {
             return;
         }
 
-        const payload: User = {
-            ...form,
-            id: editingId ?? Date.now(),
-            name: form.name.trim(),
-            email: form.email.trim().toLowerCase(),
-            phone: form.phone.trim(),
-            identityNumber: form.identityNumber.trim(),
-            faculty: form.faculty.trim(),
-            studyProgram: form.studyProgram.trim(),
-            createdAt:
-                editingId !== null
-                    ? users.find((user) => user.id === editingId)?.createdAt ??
-                      new Date().toISOString().slice(0, 10)
-                    : new Date().toISOString().slice(0, 10),
-        };
-
-        if (editingId !== null) {
-            setUsers((previous) =>
-                previous.map((user) =>
-                    user.id === editingId ? payload : user,
-                ),
-            );
-        } else {
-            setUsers((previous) => [payload, ...previous]);
-            setCurrentPage(1);
+        const data = new FormData();
+        data.set('name', form.name);
+        data.set('email', form.email);
+        data.set('phone', form.phone);
+        data.set('role', form.role);
+        data.set('borrower_type', form.borrowerType);
+        data.set('identity_number', form.identityNumber);
+        data.set('faculty', form.faculty);
+        data.set('study_program', form.studyProgram);
+        data.set('enrollment_year', form.enrollmentYear);
+        data.set('unit_name', form.unitName);
+        data.set('position', form.position);
+        data.set('organization_name', form.organizationName);
+        data.set('borrowing_context', form.borrowingContext);
+        data.set('address', form.address);
+        if (form.password) data.set('password', form.password);
+        if (form.passwordConfirmation) {
+            data.set('password_confirmation', form.passwordConfirmation);
         }
+        if (photoFile) data.set('photo', photoFile);
+        if (removePhoto) data.set('removePhoto', 'true');
 
-        closeModal();
+        setSaving(true);
+        try {
+            await managementRequest<{ user: User }>(
+                editingId
+                    ? `/api/admin/users/${editingId}`
+                    : '/api/admin/users',
+                {
+                    method: editingId ? 'PATCH' : 'POST',
+                    body: data,
+                },
+            );
+            await loadUsers();
+            setCurrentPage(1);
+            closeModal();
+        } catch (error) {
+            alert(managementErrorMessage(error));
+        } finally {
+            setSaving(false);
+        }
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
         if (deleteId === null) return;
-
-        setUsers((previous) =>
-            previous.filter((user) => user.id !== deleteId),
-        );
-
-        setDeleteId(null);
+        try {
+            await managementRequest<{ deleted: boolean }>(
+                `/api/admin/users/${deleteId}`,
+                { method: 'DELETE' },
+            );
+            await loadUsers();
+            setDeleteId(null);
+        } catch (error) {
+            alert(managementErrorMessage(error));
+        }
     }
 
     function closeModal() {
         setModalOpen(false);
         setEditingId(null);
         setForm(emptyForm);
+        setPhotoFile(null);
+        setRemovePhoto(false);
+        setPreviewModal(null);
     }
 
     return (
@@ -372,11 +643,14 @@ export default function ManageUser() {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[850px] text-left text-sm">
+                        <table className="w-full min-w-[1000px] text-left text-sm">
                             <thead className="bg-neutral-50 text-xs text-neutral-500">
                                 <tr>
                                     <th className="px-5 py-4 font-semibold">
                                         Pengguna
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Kategori Peminjam
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
                                         NIM / NIP
@@ -404,15 +678,21 @@ export default function ManageUser() {
                                     >
                                         <td className="px-5 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-sm font-bold text-neutral-700">
-                                                    {user.name
-                                                        .split(' ')
-                                                        .slice(0, 2)
-                                                        .map((part) =>
-                                                            part[0],
-                                                        )
-                                                        .join('')
-                                                        .toUpperCase()}
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-neutral-100 text-sm font-bold text-neutral-700">
+                                                    {user.avatar ? (
+                                                        <img
+                                                            src={user.avatar}
+                                                            alt=""
+                                                            className="h-full w-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        user.name
+                                                            .split(' ')
+                                                            .slice(0, 2)
+                                                            .map((part) => part[0])
+                                                            .join('')
+                                                            .toUpperCase()
+                                                    )}
                                                 </div>
 
                                                 <div>
@@ -424,6 +704,14 @@ export default function ManageUser() {
                                                     </p>
                                                 </div>
                                             </div>
+                                        </td>
+
+                                        <td className="px-5 py-4 text-xs text-neutral-700">
+                                            {user.borrowerType
+                                                ? borrowerLabels[
+                                                      user.borrowerType
+                                                  ]
+                                                : '-'}
                                         </td>
 
                                         <td className="px-5 py-4 text-neutral-700">
@@ -453,6 +741,21 @@ export default function ManageUser() {
 
                                         <td className="px-5 py-4">
                                             <div className="flex justify-end gap-1">
+                                                <button
+                                                    type="button"
+                                                    title="Duplikasi"
+                                                    aria-label={`Duplikasi pengguna ${user.name}`}
+                                                    onClick={() =>
+                                                        void duplicateUser(user)
+                                                    }
+                                                    className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                                                >
+                                                    <Icon
+                                                        name="copy"
+                                                        size={16}
+                                                    />
+                                                </button>
+
                                                 <button
                                                     type="button"
                                                     title="Edit"
@@ -488,7 +791,7 @@ export default function ManageUser() {
                                 {paginatedUsers.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan={6}
+                                            colSpan={7}
                                             className="px-5 py-14 text-center"
                                         >
                                             <Icon
@@ -498,13 +801,17 @@ export default function ManageUser() {
                                             />
 
                                             <p className="font-semibold text-neutral-700">
-                                                Pengguna tidak ditemukan
+                                                {loading
+                                                    ? 'Memuat data pengguna...'
+                                                    : 'Pengguna tidak ditemukan'}
                                             </p>
 
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                Ubah kata kunci atau filter
-                                                pencarian.
-                                            </p>
+                                            {!loading && (
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    Ubah kata kunci atau filter
+                                                    pencarian, atau tambahkan data pengguna.
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 )}
@@ -562,8 +869,7 @@ export default function ManageUser() {
                 </section>
 
                 <p className="text-xs text-neutral-400">
-                    Data saat ini merupakan ilustrasi frontend dan belum
-                    tersimpan ke database.
+                    Data pengguna tersimpan di database FAMS.
                 </p>
             </div>
 
@@ -606,64 +912,107 @@ export default function ManageUser() {
                         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 sm:p-7">
                             <section className="space-y-4">
                                 <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
-                                    Informasi Akun
+                                    Foto Profil
                                 </h3>
+                                <div className="flex flex-wrap items-center gap-4">
+                                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl bg-neutral-100 text-sm font-bold text-neutral-700">
+                                        {photoPreview && !removePhoto ? (
+                                            <button
+                                                type="button"
+                                                onClick={openPhotoPreview}
+                                                title="Lihat pratinjau foto"
+                                                aria-label="Lihat pratinjau foto profil"
+                                                className="h-full w-full cursor-zoom-in"
+                                            >
+                                                <img
+                                                    src={photoPreview}
+                                                    alt=""
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            </button>
+                                        ) : (
+                                            form.name
+                                                .split(' ')
+                                                .slice(0, 2)
+                                                .map((part) => part[0])
+                                                .join('')
+                                                .toUpperCase() || '-'
+                                        )}
+                                    </div>
+                                    <div className="min-w-0 flex-1 space-y-2">
+                                        <input
+                                            id="photo"
+                                            name="photo"
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/webp"
+                                            onChange={(event) => {
+                                                setPhotoFile(
+                                                    event.target.files?.[0] ??
+                                                        null,
+                                                );
+                                                setRemovePhoto(false);
+                                            }}
+                                            className={inputClass}
+                                        />
+                                        <p className="text-[11px] text-neutral-400">
+                                            JPG, PNG, atau WEBP, maksimal 5 MB.
+                                        </p>
+                                        {(form.avatar || photoFile) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setPhotoFile(null);
+                                                    setRemovePhoto(true);
+                                                }}
+                                                className="text-xs font-medium text-neutral-600 underline"
+                                            >
+                                                Hapus foto
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </section>
 
+                            <section className="space-y-4">
+                                <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
+                                    Informasi Pribadi
+                                </h3>
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    <label className="block space-y-2">
-                                        <span className="text-xs font-semibold text-neutral-700">
-                                            Nama Lengkap *
-                                        </span>
-                                        <input
-                                            required
-                                            value={form.name}
-                                            onChange={(event) =>
-                                                updateForm(
-                                                    'name',
-                                                    event.target.value,
-                                                )
-                                            }
-                                            className={inputClass}
-                                            placeholder="Masukkan nama lengkap"
-                                        />
-                                    </label>
-
-                                    <label className="block space-y-2">
-                                        <span className="text-xs font-semibold text-neutral-700">
-                                            Email *
-                                        </span>
-                                        <input
-                                            required
-                                            type="email"
-                                            value={form.email}
-                                            onChange={(event) =>
-                                                updateForm(
-                                                    'email',
-                                                    event.target.value,
-                                                )
-                                            }
-                                            className={inputClass}
-                                            placeholder="nama@email.com"
-                                        />
-                                    </label>
-
-                                    <label className="block space-y-2">
-                                        <span className="text-xs font-semibold text-neutral-700">
-                                            Nomor Telepon
-                                        </span>
-                                        <input
-                                            value={form.phone}
-                                            onChange={(event) =>
-                                                updateForm(
-                                                    'phone',
-                                                    event.target.value,
-                                                )
-                                            }
-                                            className={inputClass}
-                                            placeholder="08xxxxxxxxxx"
-                                        />
-                                    </label>
-
+                                    <FormInput
+                                        label="Nama Lengkap"
+                                        name="name"
+                                        value={form.name}
+                                        placeholder="Masukkan nama lengkap"
+                                        autoComplete="name"
+                                        required
+                                        onChange={(value) =>
+                                            updateForm('name', value)
+                                        }
+                                    />
+                                    <FormInput
+                                        label="Email"
+                                        name="email"
+                                        type="email"
+                                        value={form.email}
+                                        placeholder="nama@email.com"
+                                        autoComplete="email"
+                                        required
+                                        onChange={(value) =>
+                                            updateForm('email', value)
+                                        }
+                                    />
+                                    <FormInput
+                                        label="Nomor Handphone"
+                                        name="phone"
+                                        type="tel"
+                                        value={form.phone}
+                                        placeholder="08xxxxxxxxxx"
+                                        autoComplete="tel"
+                                        required
+                                        onChange={(value) =>
+                                            updateForm('phone', value)
+                                        }
+                                    />
                                     <label className="block space-y-2">
                                         <span className="text-xs font-semibold text-neutral-700">
                                             Role Pengguna *
@@ -672,16 +1021,13 @@ export default function ManageUser() {
                                             required
                                             value={form.role}
                                             onChange={(event) =>
-                                                updateForm(
-                                                    'role',
+                                                changeRole(
                                                     event.target.value as UserRole,
                                                 )
                                             }
                                             className={inputClass}
                                         >
-                                            <option value="admin">
-                                                Admin
-                                            </option>
+                                            <option value="admin">Admin</option>
                                             <option value="pengelola">
                                                 Pengelola
                                             </option>
@@ -693,63 +1039,418 @@ export default function ManageUser() {
                                 </div>
                             </section>
 
-                            <section className="space-y-4">
-                                <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
-                                    Informasi Identitas
-                                </h3>
+                            {form.role === 'peminjam' && (
+                                <section className="space-y-4">
+                                    <div>
+                                        <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
+                                            Kategori Peminjam
+                                        </h3>
+                                        <p className="mt-2 text-xs text-neutral-500">
+                                            Pilih kategori sesuai status
+                                            pengguna.
+                                        </p>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        {borrowerOptions.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() =>
+                                                    changeBorrowerType(
+                                                        option.value,
+                                                    )
+                                                }
+                                                className={`rounded-xl border p-3 text-left transition ${
+                                                    form.borrowerType ===
+                                                    option.value
+                                                        ? 'border-neutral-900 bg-neutral-50 ring-1 ring-neutral-900/10'
+                                                        : 'border-neutral-200 bg-white hover:bg-neutral-50'
+                                                }`}
+                                            >
+                                                <span className="text-sm font-semibold text-neutral-900">
+                                                    {option.label}
+                                                </span>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    {option.description}
+                                                </p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
 
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                    <label className="block space-y-2">
-                                        <span className="text-xs font-semibold text-neutral-700">
-                                            NIM / NIP
-                                        </span>
-                                        <input
+                            {form.role === 'peminjam' &&
+                                form.borrowerType && (
+                                    <section className="space-y-4">
+                                    <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
+                                        {form.borrowerType === 'mahasiswa'
+                                            ? 'Identitas Mahasiswa'
+                                            : form.borrowerType === 'dosen'
+                                              ? 'Identitas Dosen'
+                                              : form.borrowerType === 'staf'
+                                                ? 'Identitas Tenaga Kependidikan'
+                                                : 'Identitas Pihak Eksternal'}
+                                    </h3>
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <FormInput
+                                            label={
+                                                form.borrowerType ===
+                                                'mahasiswa'
+                                                    ? 'NIM'
+                                                    : form.borrowerType ===
+                                                        'dosen'
+                                                      ? 'NIP / NIDN'
+                                                      : form.borrowerType ===
+                                                          'staf'
+                                                        ? 'NIP / NIK'
+                                                        : 'NIK'
+                                            }
+                                            name="identity_number"
                                             value={form.identityNumber}
-                                            onChange={(event) =>
+                                            placeholder={
+                                                form.borrowerType ===
+                                                'mahasiswa'
+                                                    ? 'Masukkan NIM'
+                                                    : form.borrowerType ===
+                                                        'dosen'
+                                                      ? 'Masukkan NIP atau NIDN'
+                                                      : form.borrowerType ===
+                                                          'staf'
+                                                        ? 'Masukkan NIP atau NIK'
+                                                        : 'Masukkan NIK (opsional)'
+                                            }
+                                            required={
+                                                form.borrowerType !==
+                                                'eksternal'
+                                            }
+                                            onChange={(value) =>
                                                 updateForm(
                                                     'identityNumber',
-                                                    event.target.value,
+                                                    value,
                                                 )
                                             }
-                                            className={inputClass}
-                                            placeholder="Masukkan NIM atau NIP"
                                         />
-                                    </label>
+                                        {(form.borrowerType === 'mahasiswa' ||
+                                            form.borrowerType === 'dosen') && (
+                                            <>
+                                                <FormInput
+                                                    label="Fakultas"
+                                                    name="faculty"
+                                                    value={form.faculty}
+                                                    placeholder="Masukkan nama fakultas"
+                                                    required
+                                                    onChange={(value) =>
+                                                        updateForm(
+                                                            'faculty',
+                                                            value,
+                                                        )
+                                                    }
+                                                />
+                                                <FormInput
+                                                    label="Program Studi"
+                                                    name="study_program"
+                                                    value={form.studyProgram}
+                                                    placeholder="Masukkan program studi"
+                                                    required
+                                                    onChange={(value) =>
+                                                        updateForm(
+                                                            'studyProgram',
+                                                            value,
+                                                        )
+                                                    }
+                                                />
+                                            </>
+                                        )}
+                                        {form.borrowerType === 'mahasiswa' && (
+                                            <FormInput
+                                                label="Angkatan"
+                                                name="enrollment_year"
+                                                type="number"
+                                                min={1900}
+                                                max={new Date().getFullYear() + 1}
+                                                value={form.enrollmentYear}
+                                                placeholder="Contoh: 2024"
+                                                required
+                                                onChange={(value) =>
+                                                    updateForm(
+                                                        'enrollmentYear',
+                                                        value,
+                                                    )
+                                                }
+                                            />
+                                        )}
+                                        {form.borrowerType === 'staf' && (
+                                            <>
+                                                <FormInput
+                                                    label="Fakultas"
+                                                    name="faculty"
+                                                    value={form.faculty}
+                                                    placeholder="Masukkan nama fakultas"
+                                                    onChange={(value) =>
+                                                        updateForm(
+                                                            'faculty',
+                                                            value,
+                                                        )
+                                                    }
+                                                />
+                                                <FormInput
+                                                    label="Unit Kerja"
+                                                    name="unit_name"
+                                                    value={form.unitName}
+                                                    placeholder="Contoh: Tata Usaha FTI"
+                                                    required
+                                                    onChange={(value) =>
+                                                        updateForm(
+                                                            'unitName',
+                                                            value,
+                                                        )
+                                                    }
+                                                />
+                                            </>
+                                        )}
+                                        {['dosen', 'staf', 'eksternal'].includes(
+                                            form.borrowerType,
+                                        ) && (
+                                            <FormInput
+                                                label={
+                                                    form.borrowerType ===
+                                                    'eksternal'
+                                                        ? 'Jabatan / Peran'
+                                                        : 'Jabatan'
+                                                }
+                                                name="position"
+                                                value={form.position}
+                                                placeholder={
+                                                    form.borrowerType ===
+                                                    'dosen'
+                                                        ? 'Contoh: Dosen, Kaprodi'
+                                                        : 'Masukkan jabatan atau peran'
+                                                }
+                                                required
+                                                onChange={(value) =>
+                                                    updateForm(
+                                                        'position',
+                                                        value,
+                                                    )
+                                                }
+                                            />
+                                        )}
+                                        {form.borrowerType === 'eksternal' && (
+                                            <FormInput
+                                                label="Instansi / Organisasi"
+                                                name="organization_name"
+                                                value={form.organizationName}
+                                                placeholder="Nama instansi atau organisasi"
+                                                required
+                                                onChange={(value) =>
+                                                    updateForm(
+                                                        'organizationName',
+                                                        value,
+                                                    )
+                                                }
+                                            />
+                                        )}
+                                    </div>
+                                    </section>
+                                )}
 
-                                    <label className="block space-y-2">
-                                        <span className="text-xs font-semibold text-neutral-700">
-                                            Fakultas
-                                        </span>
-                                        <input
+                            {form.role !== 'peminjam' && (
+                                <section className="space-y-4">
+                                    <div>
+                                        <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
+                                            Identitas Pengelola
+                                        </h3>
+                                        <p className="mt-2 text-xs text-neutral-500">
+                                            Informasi kepegawaian bersifat
+                                            opsional.
+                                        </p>
+                                    </div>
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <FormInput
+                                            label="NIP / NIK"
+                                            name="identity_number"
+                                            value={form.identityNumber}
+                                            placeholder="Masukkan NIP atau NIK"
+                                            onChange={(value) =>
+                                                updateForm(
+                                                    'identityNumber',
+                                                    value,
+                                                )
+                                            }
+                                        />
+                                        <FormInput
+                                            label="Fakultas"
+                                            name="faculty"
                                             value={form.faculty}
-                                            onChange={(event) =>
-                                                updateForm(
-                                                    'faculty',
-                                                    event.target.value,
-                                                )
+                                            placeholder="Masukkan fakultas"
+                                            onChange={(value) =>
+                                                updateForm('faculty', value)
                                             }
-                                            className={inputClass}
-                                            placeholder="Nama fakultas"
                                         />
-                                    </label>
+                                        <FormInput
+                                            label="Unit Kerja"
+                                            name="unit_name"
+                                            value={form.unitName}
+                                            placeholder="Masukkan unit kerja"
+                                            onChange={(value) =>
+                                                updateForm('unitName', value)
+                                            }
+                                        />
+                                        <FormInput
+                                            label="Jabatan"
+                                            name="position"
+                                            value={form.position}
+                                            placeholder="Masukkan jabatan"
+                                            onChange={(value) =>
+                                                updateForm('position', value)
+                                            }
+                                        />
+                                    </div>
+                                </section>
+                            )}
 
-                                    <label className="block space-y-2 sm:col-span-2">
-                                        <span className="text-xs font-semibold text-neutral-700">
-                                            Program Studi
-                                        </span>
-                                        <input
-                                            value={form.studyProgram}
-                                            onChange={(event) =>
+                            {form.role === 'peminjam' &&
+                                form.borrowerType === 'mahasiswa' && (
+                                    <section className="space-y-4">
+                                    <div>
+                                        <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
+                                            Konteks Peminjaman
+                                        </h3>
+                                        <p className="mt-2 text-xs text-neutral-500">
+                                            Pilih tujuan peminjaman aset.
+                                        </p>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        {[
+                                            {
+                                                value: 'pribadi',
+                                                label: 'Pribadi',
+                                                description:
+                                                    'Meminjam untuk kebutuhan pribadi',
+                                            },
+                                            {
+                                                value: 'organisasi',
+                                                label: 'Organisasi',
+                                                description:
+                                                    'Mewakili UKM, Himpunan, BEM, atau organisasi lain',
+                                            },
+                                        ].map((context) => (
+                                            <button
+                                                key={context.value}
+                                                type="button"
+                                                onClick={() =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        borrowingContext:
+                                                            context.value,
+                                                        organizationName:
+                                                            context.value ===
+                                                            'pribadi'
+                                                                ? ''
+                                                                : current.organizationName,
+                                                    }))
+                                                }
+                                                className={`rounded-xl border p-3 text-left transition ${
+                                                    form.borrowingContext ===
+                                                    context.value
+                                                        ? 'border-neutral-900 bg-neutral-50 ring-1 ring-neutral-900/10'
+                                                        : 'border-neutral-200 bg-white hover:bg-neutral-50'
+                                                }`}
+                                            >
+                                                <span className="text-sm font-semibold text-neutral-900">
+                                                    {context.label}
+                                                </span>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    {context.description}
+                                                </p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {form.borrowingContext ===
+                                        'organisasi' && (
+                                        <FormInput
+                                            label="Nama Organisasi"
+                                            name="organization_name"
+                                            value={form.organizationName}
+                                            placeholder="Contoh: Himpunan Mahasiswa Informatika"
+                                            required
+                                            onChange={(value) =>
                                                 updateForm(
-                                                    'studyProgram',
-                                                    event.target.value,
+                                                    'organizationName',
+                                                    value,
                                                 )
                                             }
-                                            className={inputClass}
-                                            placeholder="Nama program studi"
                                         />
-                                    </label>
+                                    )}
+                                    </section>
+                                )}
+
+                            <section className="space-y-4">
+                                <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
+                                    Alamat (Opsional)
+                                </h3>
+                                <textarea
+                                    id="address"
+                                    name="address"
+                                    rows={3}
+                                    maxLength={2000}
+                                    value={form.address}
+                                    onChange={(event) =>
+                                        updateForm(
+                                            'address',
+                                            event.target.value,
+                                        )
+                                    }
+                                    className={inputClass}
+                                    placeholder="Masukkan alamat tempat tinggal"
+                                />
+                            </section>
+
+                            <section className="space-y-4">
+                                <h3 className="border-b border-neutral-100 pb-3 text-sm font-bold text-neutral-900">
+                                    Keamanan Akun
+                                </h3>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <FormInput
+                                        label={
+                                            editingId !== null
+                                                ? 'Password Baru'
+                                                : 'Password'
+                                        }
+                                        name="password"
+                                        type="password"
+                                        value={form.password}
+                                        placeholder="Minimal 8 karakter"
+                                        autoComplete="new-password"
+                                        required={editingId === null}
+                                        onChange={(value) =>
+                                            updateForm('password', value)
+                                        }
+                                        maxLength={255}
+                                    />
+                                    <FormInput
+                                        label="Konfirmasi Password"
+                                        name="password_confirmation"
+                                        type="password"
+                                        value={form.passwordConfirmation}
+                                        placeholder="Ulangi password"
+                                        autoComplete="new-password"
+                                        required={editingId === null}
+                                        onChange={(value) =>
+                                            updateForm(
+                                                'passwordConfirmation',
+                                                value,
+                                            )
+                                        }
+                                        maxLength={255}
+                                    />
                                 </div>
+                                {editingId !== null && (
+                                    <p className="text-[11px] text-neutral-400">
+                                        Kosongkan kedua field password jika tidak
+                                        ingin mengubahnya.
+                                    </p>
+                                )}
                             </section>
                         </div>
 
@@ -764,11 +1465,14 @@ export default function ManageUser() {
 
                             <button
                                 type="submit"
+                                disabled={saving}
                                 className="rounded-xl bg-neutral-950 px-5 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800"
                             >
-                                {editingId !== null
-                                    ? 'Simpan Perubahan'
-                                    : 'Tambah Pengguna'}
+                                {saving
+                                    ? 'Menyimpan...'
+                                    : editingId !== null
+                                      ? 'Simpan Perubahan'
+                                      : 'Tambah Pengguna'}
                             </button>
                         </div>
                     </form>
@@ -788,8 +1492,8 @@ export default function ManageUser() {
                         </h2>
 
                         <p className="mt-2 text-sm leading-6 text-neutral-500">
-                            Pengguna yang dihapus akan hilang dari daftar
-                            tampilan ini. Tindakan ini hanya simulasi frontend.
+                            Pengguna dan semua sesi login aktifnya akan dihapus
+                            permanen dari sistem.
                         </p>
 
                         <div className="mt-6 flex justify-end gap-2">
@@ -812,6 +1516,12 @@ export default function ManageUser() {
                     </div>
                 </div>
             )}
+            <ImagePreviewModal
+                preview={previewModal}
+                heading="Pratinjau Foto Profil"
+                onClose={closePhotoPreview}
+                onIndexChange={changePhotoPreviewIndex}
+            />
         </DashboardLayout>
     );
 }

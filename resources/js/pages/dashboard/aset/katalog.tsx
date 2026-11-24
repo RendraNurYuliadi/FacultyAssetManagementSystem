@@ -8,19 +8,69 @@ import AssetManagementBanner from '../../../components/dashboard/AssetManagement
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '../../../lib/management-client';
 
 type AssetCategory = 'Barang' | 'Ruangan';
 type AssetCondition = 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
 type AssetStatus = 'Tersedia' | 'Dipinjam' | 'Maintenance' | 'Tidak Aktif';
 
+type ItemSource = {
+    kind: 'Barang';
+    code: string;
+    name: string;
+    type: string;
+    brand: string;
+    model: string;
+    specification: string;
+    unit: string;
+    responsiblePerson: string;
+    status: string;
+    description: string;
+    createdAt: string;
+    images: string[];
+};
+
+type RoomSource = {
+    kind: 'Ruangan';
+    code: string;
+    name: string;
+    type: string;
+    floor: string;
+    roomNumber: string;
+    capacity: number;
+    area: number;
+    responsiblePerson: string;
+    facilities: string[];
+    description: string;
+    createdAt: string;
+    images: string[];
+};
+
+type AssetSource = ItemSource | RoomSource;
+
+type AssetLocation = {
+    code: string;
+    name: string;
+    type: string;
+    address: string;
+    area: string;
+    responsible: string;
+    phone: string;
+    description: string;
+    images: string[];
+};
+
 type Asset = {
-    id: number;
+    id: string;
     code: string;
     name: string;
     category: AssetCategory;
-    itemId?: number;
-    roomId?: number;
-    locationId: number;
+    itemId: string;
+    roomId: string;
+    locationId: string;
     quantity: number;
     condition: AssetCondition;
     status: AssetStatus;
@@ -29,123 +79,12 @@ type Asset = {
     fundingSource: string;
     description: string;
     images: string[];
+    createdAt: string;
+    source: AssetSource | null;
+    location: AssetLocation | null;
 };
 
 const PAGE_SIZE = 4;
-
-const masterItems = [
-    { id: 1, name: 'Laptop Lenovo ThinkPad' },
-    { id: 2, name: 'Proyektor Epson' },
-    { id: 3, name: 'Kursi Kuliah' },
-    { id: 4, name: 'Meja Komputer' },
-    { id: 5, name: 'Printer Epson L3210' },
-];
-
-const masterRooms = [
-    { id: 1, name: 'Ruang Laboratorium Komputer' },
-    { id: 2, name: 'Ruang Kelas 301' },
-    { id: 3, name: 'Ruang Rapat Fakultas' },
-    { id: 4, name: 'Ruang Dosen' },
-];
-
-const masterLocations = [
-    { id: 1, name: 'Gedung Fakultas Teknologi Informasi' },
-    { id: 2, name: 'Gedung Rektorat' },
-    { id: 3, name: 'Gedung Laboratorium' },
-];
-
-const initialAssets: Asset[] = [
-    {
-        id: 1,
-        code: 'FAMS-BRG-001',
-        name: 'Laptop Lenovo ThinkPad',
-        category: 'Barang',
-        itemId: 1,
-        locationId: 1,
-        quantity: 10,
-        condition: 'Baik',
-        status: 'Tersedia',
-        acquisitionDate: '2025-01-15',
-        price: 12500000,
-        fundingSource: 'APBN',
-        description: 'Laptop untuk menunjang kegiatan akademik, administrasi, dan operasional Fakultas Teknologi Informasi.',
-        images: [
-            'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=900',
-            'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=900',
-        ],
-    },
-    {
-        id: 2,
-        code: 'FAMS-BRG-002',
-        name: 'Proyektor Epson',
-        category: 'Barang',
-        itemId: 2,
-        locationId: 1,
-        quantity: 5,
-        condition: 'Baik',
-        status: 'Dipinjam',
-        acquisitionDate: '2025-03-10',
-        price: 6500000,
-        fundingSource: 'APBD',
-        description: 'Proyektor untuk kebutuhan presentasi, perkuliahan, seminar, dan kegiatan fakultas.',
-        images: [
-            'https://images.unsplash.com/photo-1528395874238-34ebe249b3f2?w=900',
-        ],
-    },
-    {
-        id: 3,
-        code: 'FAMS-RNG-001',
-        name: 'Ruang Laboratorium Komputer',
-        category: 'Ruangan',
-        roomId: 1,
-        locationId: 3,
-        quantity: 1,
-        condition: 'Baik',
-        status: 'Tersedia',
-        acquisitionDate: '2024-08-01',
-        price: 150000000,
-        fundingSource: 'APBN',
-        description: 'Laboratorium komputer untuk kegiatan praktikum, pembelajaran, dan pengembangan teknologi informasi.',
-        images: [
-            'https://images.unsplash.com/photo-1581092921461-eab62e97a780?w=900',
-            'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=900',
-        ],
-    },
-    {
-        id: 4,
-        code: 'FAMS-BRG-003',
-        name: 'Printer Epson L3210',
-        category: 'Barang',
-        itemId: 5,
-        locationId: 1,
-        quantity: 3,
-        condition: 'Rusak Ringan',
-        status: 'Maintenance',
-        acquisitionDate: '2024-11-20',
-        price: 2800000,
-        fundingSource: 'Hibah',
-        description: 'Printer multifungsi untuk kebutuhan pencetakan dokumen administrasi fakultas.',
-        images: [],
-    },
-    {
-        id: 5,
-        code: 'FAMS-RNG-002',
-        name: 'Ruang Kelas 301',
-        category: 'Ruangan',
-        roomId: 2,
-        locationId: 1,
-        quantity: 1,
-        condition: 'Baik',
-        status: 'Tersedia',
-        acquisitionDate: '2024-08-01',
-        price: 95000000,
-        fundingSource: 'APBD',
-        description: 'Ruang kelas untuk kegiatan perkuliahan dan pembelajaran mahasiswa.',
-        images: [
-            'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=900',
-        ],
-    },
-];
 
 const formatCurrency = (value: number) =>
     new Intl.NumberFormat('id-ID', {
@@ -154,12 +93,23 @@ const formatCurrency = (value: number) =>
         maximumFractionDigits: 0,
     }).format(value);
 
-const formatDate = (value: string) =>
-    new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', {
+const formatDate = (value: string) => {
+    if (!value) return '-';
+
+    return new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', {
         day: '2-digit',
         month: 'long',
         year: 'numeric',
     });
+};
+
+function getLocationName(asset: Asset) {
+    return asset.location?.name || 'Lokasi tidak tersedia';
+}
+
+function getAssetTypeName(asset: Asset) {
+    return asset.source?.name || asset.name;
+}
 
 const getStatusStyle = (status: AssetStatus) => {
     switch (status) {
@@ -186,7 +136,10 @@ const getConditionStyle = (condition: AssetCondition) => {
 };
 
 export default function KatalogAset() {
-    const [assets] = useState<Asset[]>(initialAssets);
+    const [assets, setAssets] = useState<Asset[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [reloadKey, setReloadKey] = useState(0);
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('Semua');
     const [statusFilter, setStatusFilter] = useState('Semua');
@@ -194,6 +147,31 @@ export default function KatalogAset() {
     const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
     const [activeImage, setActiveImage] =
         useState<ImagePreviewState | null>(null);
+
+    useEffect(() => {
+        let active = true;
+
+        managementRequest<{ assets: Asset[] }>('/api/catalog/assets')
+            .then((response) => {
+                if (!Array.isArray(response.assets)) {
+                    throw new Error('Data katalog aset tidak valid.');
+                }
+                if (active) {
+                    setAssets(response.assets);
+                    setLoadError('');
+                }
+            })
+            .catch((error: unknown) => {
+                if (active) setLoadError(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [reloadKey]);
 
     useEffect(() => {
         if (!activeImage) return;
@@ -210,12 +188,58 @@ export default function KatalogAset() {
 
     const filteredAssets = useMemo(() => {
         return assets.filter((asset) => {
-            const keyword = search.toLowerCase();
-
-            const matchesSearch =
-                asset.name.toLowerCase().includes(keyword) ||
-                asset.code.toLowerCase().includes(keyword) ||
-                getLocationName(asset.locationId).toLowerCase().includes(keyword);
+            const keyword = search.toLowerCase().trim();
+            const sourceFields =
+                asset.source?.kind === 'Barang'
+                    ? [
+                          asset.source.code,
+                          asset.source.name,
+                          asset.source.type,
+                          asset.source.brand,
+                          asset.source.model,
+                          asset.source.specification,
+                          asset.source.unit,
+                          asset.source.responsiblePerson,
+                          asset.source.description,
+                      ]
+                    : asset.source
+                      ? [
+                            asset.source.code,
+                            asset.source.name,
+                            asset.source.type,
+                            asset.source.floor,
+                            asset.source.roomNumber,
+                            asset.source.responsiblePerson,
+                            asset.source.facilities.join(' '),
+                            asset.source.description,
+                        ]
+                      : [];
+            const locationFields = asset.location
+                ? [
+                      asset.location.code,
+                      asset.location.name,
+                      asset.location.type,
+                      asset.location.address,
+                      asset.location.area,
+                      asset.location.responsible,
+                      asset.location.phone,
+                      asset.location.description,
+                  ]
+                : [];
+            const matchesSearch = [
+                asset.name,
+                asset.code,
+                asset.category,
+                asset.quantity.toString(),
+                asset.condition,
+                asset.status,
+                asset.acquisitionDate,
+                asset.price.toString(),
+                asset.fundingSource,
+                asset.description,
+                ...sourceFields,
+                ...locationFields,
+            ].some((value) => value.toLowerCase().includes(keyword));
 
             const matchesCategory =
                 categoryFilter === 'Semua' || asset.category === categoryFilter;
@@ -227,7 +251,10 @@ export default function KatalogAset() {
         });
     }, [assets, search, categoryFilter, statusFilter]);
 
-    const totalPages = Math.ceil(filteredAssets.length / PAGE_SIZE);
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredAssets.length / PAGE_SIZE),
+    );
     const currentPage = Math.min(page, Math.max(totalPages, 1));
     const paginatedAssets = filteredAssets.slice(
         (currentPage - 1) * PAGE_SIZE,
@@ -273,18 +300,6 @@ export default function KatalogAset() {
             iconStyle: 'bg-neutral-200 text-neutral-700',
         },
     ];
-
-    function getLocationName(id: number) {
-        return masterLocations.find((location) => location.id === id)?.name ?? '-';
-    }
-
-    function getAssetTypeName(asset: Asset) {
-        if (asset.category === 'Barang') {
-            return masterItems.find((item) => item.id === asset.itemId)?.name ?? asset.name;
-        }
-
-        return masterRooms.find((room) => room.id === asset.roomId)?.name ?? asset.name;
-    }
 
     function closeDetail() {
         setSelectedAsset(null);
@@ -362,7 +377,7 @@ export default function KatalogAset() {
                                     setSearch(event.target.value);
                                     setPage(1);
                                 }}
-                                placeholder="Cari nama aset, kode, atau lokasi..."
+                                placeholder="Cari kode, nama, sumber aset, atau lokasi..."
                                 className="w-full rounded-xl border border-neutral-200 bg-neutral-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-neutral-500 focus:bg-white"
                             />
                         </div>
@@ -419,12 +434,34 @@ export default function KatalogAset() {
                             {Math.min(currentPage * PAGE_SIZE, filteredAssets.length)} dari{' '}
                             {filteredAssets.length} aset
                         </span>
-                        <span>Terakhir diperbarui: Data contoh</span>
+                        <span>Terakhir diperbarui: Data sistem</span>
                     </div>
                 </div>
 
                 {/* Asset Cards */}
-                {filteredAssets.length > 0 ? (
+                {loading ? (
+                    <div className="rounded-2xl border border-neutral-200 bg-white px-5 py-16 text-center text-sm text-neutral-500">
+                        Memuat katalog aset...
+                    </div>
+                ) : loadError ? (
+                    <div className="rounded-2xl border border-red-200 bg-white px-5 py-12 text-center">
+                        <p className="text-sm font-semibold text-neutral-800">
+                            Katalog aset tidak dapat dimuat
+                        </p>
+                        <p className="mt-2 text-sm text-neutral-500">{loadError}</p>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setLoading(true);
+                                setLoadError('');
+                                setReloadKey((current) => current + 1);
+                            }}
+                            className="mt-4 rounded-xl bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
+                        >
+                            Coba lagi
+                        </button>
+                    </div>
+                ) : filteredAssets.length > 0 ? (
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
                         {paginatedAssets.map((asset) => (
                             <button
@@ -505,7 +542,7 @@ export default function KatalogAset() {
                                         <div className="min-w-0">
                                             <p className="text-[11px] text-neutral-400">Lokasi</p>
                                             <p className="mt-1 truncate text-xs font-medium text-neutral-700">
-                                                {getLocationName(asset.locationId)}
+                                                {getLocationName(asset)}
                                             </p>
                                         </div>
 
@@ -717,7 +754,101 @@ export default function KatalogAset() {
                                                 label={selectedAsset.category === 'Barang' ? 'Jumlah Barang' : 'Jumlah Ruangan'}
                                                 value={selectedAsset.category === 'Barang' ? `${selectedAsset.quantity} unit` : '1 ruangan'}
                                             />
+                                            <DetailRow
+                                                label="Tanggal pencatatan"
+                                                value={formatDate(selectedAsset.createdAt)}
+                                            />
                                         </div>
+                                    </section>
+
+                                    <section>
+                                        <h4 className="mb-3 border-b border-neutral-200 pb-2 text-xs font-bold uppercase tracking-wider text-neutral-800">
+                                            Data {selectedAsset.category}
+                                        </h4>
+
+                                        {selectedAsset.source ? (
+                                            <div className="space-y-3">
+                                                <DetailRow
+                                                    label="Kode sumber"
+                                                    value={selectedAsset.source.code || '-'}
+                                                />
+                                                <DetailRow
+                                                    label="Nama"
+                                                    value={selectedAsset.source.name || '-'}
+                                                />
+                                                <DetailRow
+                                                    label={
+                                                        selectedAsset.source.kind === 'Barang'
+                                                            ? 'Kategori barang'
+                                                            : 'Jenis ruangan'
+                                                    }
+                                                    value={selectedAsset.source.type || '-'}
+                                                />
+                                                {selectedAsset.source.kind === 'Barang' ? (
+                                                    <>
+                                                        <DetailRow
+                                                            label="Merek"
+                                                            value={selectedAsset.source.brand || '-'}
+                                                        />
+                                                        <DetailRow
+                                                            label="Model"
+                                                            value={selectedAsset.source.model || '-'}
+                                                        />
+                                                        <DetailRow
+                                                            label="Satuan"
+                                                            value={selectedAsset.source.unit || '-'}
+                                                        />
+                                                        <DetailRow
+                                                            label="Status barang"
+                                                            value={selectedAsset.source.status || '-'}
+                                                        />
+                                                        <DetailRow
+                                                            label="Spesifikasi"
+                                                            value={selectedAsset.source.specification || '-'}
+                                                        />
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <DetailRow
+                                                            label="Nomor ruangan"
+                                                            value={selectedAsset.source.roomNumber || '-'}
+                                                        />
+                                                        <DetailRow
+                                                            label="Lantai"
+                                                            value={selectedAsset.source.floor || '-'}
+                                                        />
+                                                        <DetailRow
+                                                            label="Kapasitas"
+                                                            value={`${selectedAsset.source.capacity} orang`}
+                                                        />
+                                                        <DetailRow
+                                                            label="Luas"
+                                                            value={`${selectedAsset.source.area} m²`}
+                                                        />
+                                                        <DetailRow
+                                                            label="Fasilitas"
+                                                            value={selectedAsset.source.facilities.join(', ') || '-'}
+                                                        />
+                                                    </>
+                                                )}
+                                                <DetailRow
+                                                    label="Penanggung jawab"
+                                                    value={selectedAsset.source.responsiblePerson || '-'}
+                                                />
+                                                <DetailRow
+                                                    label="Tanggal data sumber"
+                                                    value={formatDate(selectedAsset.source.createdAt)}
+                                                />
+                                                <DetailRow
+                                                    label={`Deskripsi ${selectedAsset.category.toLowerCase()}`}
+                                                    value={selectedAsset.source.description || '-'}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs leading-5 text-neutral-500">
+                                                Data sumber {selectedAsset.category.toLowerCase()} tidak ditemukan.
+                                            </p>
+                                        )}
                                     </section>
 
                                     {/* Location */}
@@ -727,8 +858,81 @@ export default function KatalogAset() {
                                         </h4>
 
                                         <div className="space-y-3">
-                                            <DetailRow label="Lokasi" value={getLocationName(selectedAsset.locationId)} />
-                                            <DetailRow label="Kategori Lokasi" value="Lingkungan Fakultas" />
+                                            {selectedAsset.location ? (
+                                                <>
+                                                    <DetailRow
+                                                        label="Kode lokasi"
+                                                        value={selectedAsset.location.code || '-'}
+                                                    />
+                                                    <DetailRow
+                                                        label="Nama lokasi"
+                                                        value={selectedAsset.location.name || '-'}
+                                                    />
+                                                    <DetailRow
+                                                        label="Jenis lokasi"
+                                                        value={selectedAsset.location.type || '-'}
+                                                    />
+                                                    <DetailRow
+                                                        label="Alamat"
+                                                        value={selectedAsset.location.address || '-'}
+                                                    />
+                                                    <DetailRow
+                                                        label="Area"
+                                                        value={selectedAsset.location.area || '-'}
+                                                    />
+                                                    <DetailRow
+                                                        label="Penanggung jawab"
+                                                        value={selectedAsset.location.responsible || '-'}
+                                                    />
+                                                    <DetailRow
+                                                        label="Nomor telepon"
+                                                        value={selectedAsset.location.phone || '-'}
+                                                    />
+                                                    <DetailRow
+                                                        label="Deskripsi lokasi"
+                                                        value={selectedAsset.location.description || '-'}
+                                                    />
+                                                    {selectedAsset.location.images.length > 0 && (
+                                                        <div className="pt-1">
+                                                            <p className="mb-2 text-[11px] text-neutral-400">
+                                                                Foto lokasi
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {selectedAsset.location.images.map(
+                                                                    (image, index) => (
+                                                                        <button
+                                                                            type="button"
+                                                                            key={`${image}-${index}`}
+                                                                            onClick={() =>
+                                                                                setActiveImage({
+                                                                                    images:
+                                                                                        selectedAsset.location?.images ?? [],
+                                                                                    index,
+                                                                                    entityName:
+                                                                                        selectedAsset.location?.name ??
+                                                                                        'Lokasi aset',
+                                                                                })
+                                                                            }
+                                                                            className="h-14 w-14 overflow-hidden rounded-lg border border-neutral-200"
+                                                                            aria-label={`Perbesar foto lokasi ${index + 1}`}
+                                                                        >
+                                                                            <img
+                                                                                src={image}
+                                                                                alt={`Lokasi ${selectedAsset.location?.name ?? ''} ${index + 1}`}
+                                                                                className="h-full w-full object-cover"
+                                                                            />
+                                                                        </button>
+                                                                    ),
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <p className="text-xs leading-5 text-neutral-500">
+                                                    Data lokasi aset tidak ditemukan.
+                                                </p>
+                                            )}
                                         </div>
                                     </section>
 
@@ -787,7 +991,7 @@ export default function KatalogAset() {
 
             <ImagePreviewModal
                 preview={activeImage}
-                heading="Preview Foto Aset"
+                heading="Preview Foto Katalog"
                 onClose={() => setActiveImage(null)}
                 onIndexChange={(index) =>
                     setActiveImage((current) =>

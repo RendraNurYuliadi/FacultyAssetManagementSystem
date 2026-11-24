@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head } from '@/lib/next-compat';
 import DashboardLayout from '../../components/layouts/DashboardLayout';
 
 type PlaceholderProps = {

@@ -1,5 +1,5 @@
 
-import { Head } from '@inertiajs/react';
+import { Head } from '@/lib/next-compat';
 import { useMemo, useState } from 'react';
 import DashboardLayout from '../../components/layouts/DashboardLayout';
 import DashboardMetricCard from '../../components/dashboard/DashboardMetricCard';

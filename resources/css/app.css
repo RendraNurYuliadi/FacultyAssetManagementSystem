@@ -2,7 +2,7 @@
 
 @source '../js/**/*.tsx';
 @source '../js/**/*.ts';
-@source '../views/**/*.blade.php';
+@source '../../app/**/*.tsx';
 
 @theme {
     --font-sans: 'Poppins', sans-serif;

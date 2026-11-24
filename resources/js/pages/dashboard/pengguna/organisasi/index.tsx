@@ -1,16 +1,24 @@
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import DashboardLayout from '../../../../components/layouts/DashboardLayout';
 import Icon from '../../../../components/Icon';
 import type { IconName } from '../../../../components/Icon';
 import AssetManagementBanner from '../../../../components/dashboard/AssetManagementBanner';
 import DashboardMetricCard from '../../../../components/dashboard/DashboardMetricCard';
+import ImagePreviewModal from '../../../../components/dashboard/ImagePreviewModal';
+import type { ImagePreviewState } from '../../../../components/dashboard/ImagePreviewModal';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '../../../../lib/management-client';
+import { nextNumberedUniqueValue } from '../../../../lib/duplicate';
+import { copyStoredImage } from '../../../../lib/image-file';
 
 type OrganizationStatus = 'Aktif' | 'Tidak Aktif';
 
 type Organization = {
-    id: number;
+    id: string;
     code: string;
     name: string;
     type: string;
@@ -22,6 +30,7 @@ type Organization = {
     description: string;
     status: OrganizationStatus;
     createdAt: string;
+    photo: string;
 };
 
 type OrganizationForm = Omit<Organization, 'id' | 'createdAt' | 'memberCount'> & {
@@ -40,79 +49,6 @@ const organizationTypes = [
     'Lainnya',
 ];
 
-const initialOrganizations: Organization[] = [
-    {
-        id: 1,
-        code: 'ORG-001',
-        name: 'BEM Fakultas',
-        type: 'Badan Eksekutif Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        leader: 'Andi Saputra',
-        email: 'bem.fti@kampus.ac.id',
-        phone: '081234567801',
-        memberCount: 35,
-        description: 'Organisasi eksekutif mahasiswa tingkat fakultas yang menjalankan program kerja dan kegiatan kemahasiswaan.',
-        status: 'Aktif',
-        createdAt: '2025-01-15',
-    },
-    {
-        id: 2,
-        code: 'ORG-002',
-        name: 'Himpunan Mahasiswa Informatika',
-        type: 'Himpunan Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        leader: 'Rizky Ramadhan',
-        email: 'hima.informatika@kampus.ac.id',
-        phone: '081234567802',
-        memberCount: 48,
-        description: 'Organisasi mahasiswa program studi Informatika.',
-        status: 'Aktif',
-        createdAt: '2025-02-10',
-    },
-    {
-        id: 3,
-        code: 'ORG-003',
-        name: 'TahuNgoding',
-        type: 'Komunitas',
-        faculty: 'Fakultas Teknologi Informasi',
-        leader: 'Rendra Yuliadi',
-        email: 'tahungoding@kampus.ac.id',
-        phone: '081234567803',
-        memberCount: 25,
-        description: 'Komunitas pembelajaran teknologi dan pengembangan perangkat lunak.',
-        status: 'Aktif',
-        createdAt: '2025-03-01',
-    },
-    {
-        id: 4,
-        code: 'ORG-004',
-        name: 'UKM Olahraga',
-        type: 'Unit Kegiatan Mahasiswa',
-        faculty: 'Universitas',
-        leader: 'Dimas Pratama',
-        email: 'ukm.olahraga@kampus.ac.id',
-        phone: '081234567804',
-        memberCount: 32,
-        description: 'Unit kegiatan mahasiswa di bidang olahraga.',
-        status: 'Aktif',
-        createdAt: '2025-04-12',
-    },
-    {
-        id: 5,
-        code: 'ORG-005',
-        name: 'Himpunan Mahasiswa Sistem Informasi',
-        type: 'Himpunan Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        leader: 'Fajar Nugraha',
-        email: 'hima.si@kampus.ac.id',
-        phone: '081234567805',
-        memberCount: 0,
-        description: 'Organisasi mahasiswa program studi Sistem Informasi.',
-        status: 'Tidak Aktif',
-        createdAt: '2024-11-20',
-    },
-];
-
 const emptyForm: OrganizationForm = {
     code: '',
     name: '',
@@ -124,6 +60,7 @@ const emptyForm: OrganizationForm = {
     memberCount: 0,
     description: '',
     status: 'Aktif',
+    photo: '',
 };
 
 const inputClass =
@@ -157,7 +94,12 @@ function Field({
 function formatDate(value: string) {
     if (!value) return '-';
 
-    return new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? new Date(`${value}T00:00:00`)
+        : new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+
+    return date.toLocaleDateString('id-ID', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
@@ -165,7 +107,8 @@ function formatDate(value: string) {
 }
 
 export default function DataOrganisasi() {
-    const [organizations, setOrganizations] = useState<Organization[]>(initialOrganizations);
+    const [organizations, setOrganizations] = useState<Organization[]>([]);
+    const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState('Semua');
     const [statusFilter, setStatusFilter] = useState('Semua');
@@ -173,20 +116,78 @@ export default function DataOrganisasi() {
 
     const [modalOpen, setModalOpen] = useState(false);
     const [detailOrganization, setDetailOrganization] = useState<Organization | null>(null);
-    const [editingId, setEditingId] = useState<number | null>(null);
-    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
 
     const [form, setForm] = useState<OrganizationForm>(emptyForm);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState('');
+    const [previewModal, setPreviewModal] =
+        useState<ImagePreviewState | null>(null);
+    const [removePhoto, setRemovePhoto] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    const closePhotoPreview = useCallback(() => {
+        setPreviewModal(null);
+    }, []);
+
+    const changePhotoPreviewIndex = useCallback((index: number) => {
+        setPreviewModal((current) =>
+            current ? { ...current, index } : current,
+        );
+    }, []);
+
+    async function loadOrganizations() {
+        const result = await managementRequest<{
+            organizations: Organization[];
+        }>('/api/admin/organizations');
+        setOrganizations(result.organizations);
+    }
+
+    useEffect(() => {
+        let active = true;
+        managementRequest<{ organizations: Organization[] }>(
+            '/api/admin/organizations',
+        )
+            .then((result) => {
+                if (active) setOrganizations(result.organizations);
+            })
+            .catch((error: unknown) => {
+                if (active) alert(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!photoFile) {
+            setPhotoPreview(form.photo);
+            return;
+        }
+        const previewUrl = URL.createObjectURL(photoFile);
+        setPhotoPreview(previewUrl);
+        return () => URL.revokeObjectURL(previewUrl);
+    }, [photoFile, form.photo]);
 
     const filteredOrganizations = useMemo(() => {
         const keyword = search.toLowerCase().trim();
 
         return organizations.filter((organization) => {
-            const matchesSearch =
-                organization.name.toLowerCase().includes(keyword) ||
-                organization.code.toLowerCase().includes(keyword) ||
-                organization.leader.toLowerCase().includes(keyword) ||
-                organization.faculty.toLowerCase().includes(keyword);
+            const matchesSearch = [
+                organization.name,
+                organization.code,
+                organization.type,
+                organization.faculty,
+                organization.leader,
+                organization.email,
+                organization.phone,
+                organization.description,
+                organization.status,
+            ].some((value) => value.toLowerCase().includes(keyword));
 
             const matchesType =
                 typeFilter === 'Semua' || organization.type === typeFilter;
@@ -247,12 +248,64 @@ export default function DataOrganisasi() {
         }));
     }
 
+    function openPhotoPreview(image: string, name: string) {
+        if (!image) return;
+        setPreviewModal({
+            images: [image],
+            imageNames: [name || 'Logo Organisasi'],
+            index: 0,
+            entityName: name || 'Logo Organisasi',
+        });
+    }
+
     function openCreateModal() {
         setEditingId(null);
+        setForm(emptyForm);
+        setPhotoFile(null);
+        setRemovePhoto(false);
+        setPreviewModal(null);
+        setModalOpen(true);
+    }
+
+    async function duplicateOrganization(organization: Organization) {
+        let photoCopy: File | null = null;
+        try {
+            if (organization.photo) {
+                photoCopy = await copyStoredImage(
+                    organization.photo,
+                    `${organization.name}-copy`,
+                );
+            }
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+            return;
+        }
+
+        setEditingId(null);
         setForm({
-            ...emptyForm,
-            code: `ORG-${String(Date.now()).slice(-6)}`,
+            code: nextNumberedUniqueValue(
+                organization.code,
+                organizations.map((item) => item.code),
+                40,
+            ),
+            name: nextNumberedUniqueValue(
+                organization.name,
+                organizations.map((item) => item.name),
+            ),
+            type: organization.type,
+            faculty: organization.faculty,
+            leader: organization.leader,
+            email: organization.email,
+            phone: organization.phone,
+            memberCount: organization.memberCount,
+            description: organization.description,
+            status: organization.status,
+            photo: '',
         });
+        setPhotoFile(photoCopy);
+        setRemovePhoto(false);
+        setPreviewModal(null);
+        setDetailOrganization(null);
         setModalOpen(true);
     }
 
@@ -270,8 +323,12 @@ export default function DataOrganisasi() {
             memberCount: organization.memberCount,
             description: organization.description,
             status: organization.status,
+            photo: organization.photo,
         });
 
+        setPhotoFile(null);
+        setRemovePhoto(false);
+        setPreviewModal(null);
         setDetailOrganization(null);
         setModalOpen(true);
     }
@@ -280,9 +337,12 @@ export default function DataOrganisasi() {
         setModalOpen(false);
         setEditingId(null);
         setForm(emptyForm);
+        setPhotoFile(null);
+        setRemovePhoto(false);
+        setPreviewModal(null);
     }
 
-    function saveOrganization(event: FormEvent<HTMLFormElement>) {
+    async function saveOrganization(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         if (!form.name.trim()) {
@@ -305,7 +365,7 @@ export default function DataOrganisasi() {
             return;
         }
 
-        const duplicateCode = organizations.some(
+        const duplicateCode = Boolean(form.code.trim()) && organizations.some(
             (organization) =>
                 organization.code.toLowerCase() === form.code.trim().toLowerCase() &&
                 organization.id !== editingId,
@@ -316,47 +376,56 @@ export default function DataOrganisasi() {
             return;
         }
 
-        const payload: Organization = {
-            ...form,
-            id: editingId ?? Date.now(),
-            code: form.code.trim(),
-            name: form.name.trim(),
-            faculty: form.faculty.trim(),
-            leader: form.leader.trim(),
-            email: form.email.trim(),
-            phone: form.phone.trim(),
-            description: form.description.trim(),
-            createdAt:
-                editingId !== null
-                    ? organizations.find((item) => item.id === editingId)?.createdAt ??
-                      new Date().toISOString().slice(0, 10)
-                    : new Date().toISOString().slice(0, 10),
-        };
+        const data = new FormData();
+        data.set('code', form.code);
+        data.set('name', form.name);
+        data.set('type', form.type);
+        data.set('faculty', form.faculty);
+        data.set('leader', form.leader);
+        data.set('email', form.email);
+        data.set('phone', form.phone);
+        data.set('memberCount', String(form.memberCount));
+        data.set('description', form.description);
+        data.set('status', form.status);
+        if (photoFile) data.set('photo', photoFile);
+        if (removePhoto) data.set('removePhoto', 'true');
 
-        if (editingId !== null) {
-            setOrganizations((previous) =>
-                previous.map((item) => item.id === editingId ? payload : item),
+        setSaving(true);
+        try {
+            await managementRequest<{ organization: Organization }>(
+                editingId
+                    ? `/api/admin/organizations/${editingId}`
+                    : '/api/admin/organizations',
+                {
+                    method: editingId ? 'PATCH' : 'POST',
+                    body: data,
+                },
             );
-        } else {
-            setOrganizations((previous) => [payload, ...previous]);
+            await loadOrganizations();
             setCurrentPage(1);
+            closeModal();
+        } catch (error) {
+            alert(managementErrorMessage(error));
+        } finally {
+            setSaving(false);
         }
-
-        closeModal();
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
         if (deleteId === null) return;
-
-        setOrganizations((previous) =>
-            previous.filter((item) => item.id !== deleteId),
-        );
-
-        if (detailOrganization?.id === deleteId) {
-            setDetailOrganization(null);
+        try {
+            await managementRequest<{ deleted: boolean }>(
+                `/api/admin/organizations/${deleteId}`,
+                { method: 'DELETE' },
+            );
+            await loadOrganizations();
+            if (detailOrganization?.id === deleteId) {
+                setDetailOrganization(null);
+            }
+            setDeleteId(null);
+        } catch (error) {
+            alert(managementErrorMessage(error));
         }
-
-        setDeleteId(null);
     }
 
     return (
@@ -503,16 +572,40 @@ export default function DataOrganisasi() {
                                         className="transition hover:bg-neutral-50/70"
                                     >
                                         <td className="px-5 py-4">
-                                            <p className="font-semibold text-neutral-900">
-                                                {organization.name}
-                                            </p>
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                {organization.email || 'Email belum tersedia'}
-                                            </p>
+                                            <div className="flex items-center gap-3">
+                                                {organization.photo && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            openPhotoPreview(
+                                                                organization.photo,
+                                                                organization.name,
+                                                            )
+                                                        }
+                                                        title="Lihat logo"
+                                                        aria-label={`Lihat logo ${organization.name}`}
+                                                        className="h-10 w-10 shrink-0 cursor-zoom-in overflow-hidden rounded-xl"
+                                                    >
+                                                        <img
+                                                            src={organization.photo}
+                                                            alt=""
+                                                            className="h-full w-full object-cover"
+                                                        />
+                                                    </button>
+                                                )}
+                                                <div>
+                                                    <p className="font-semibold text-neutral-900">
+                                                        {organization.name}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-neutral-400">
+                                                        {organization.email || 'Email belum tersedia'}
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </td>
 
                                         <td className="px-5 py-4 text-xs font-medium text-neutral-600">
-                                            {organization.code}
+                                            {organization.code || '-'}
                                         </td>
 
                                         <td className="px-5 py-4">
@@ -541,6 +634,20 @@ export default function DataOrganisasi() {
 
                                         <td className="px-5 py-4">
                                             <div className="flex justify-end gap-1">
+                                                <button
+                                                    type="button"
+                                                    title="Duplikasi"
+                                                    aria-label={`Duplikasi organisasi ${organization.name}`}
+                                                    onClick={() =>
+                                                        void duplicateOrganization(
+                                                            organization,
+                                                        )
+                                                    }
+                                                    className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                                                >
+                                                    <Icon name="copy" size={16} />
+                                                </button>
+
                                                 <button
                                                     type="button"
                                                     title="Detail"
@@ -581,11 +688,15 @@ export default function DataOrganisasi() {
                                                 className="mx-auto mb-3 text-neutral-300"
                                             />
                                             <p className="font-semibold text-neutral-700">
-                                                Organisasi tidak ditemukan
+                                                {loading
+                                                    ? 'Memuat data organisasi...'
+                                                    : 'Organisasi tidak ditemukan'}
                                             </p>
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                Ubah kata kunci atau filter pencarian.
-                                            </p>
+                                            {!loading && (
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    Ubah kata kunci atau filter pencarian, atau tambahkan data organisasi.
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 )}
@@ -636,7 +747,7 @@ export default function DataOrganisasi() {
 
                 <p className="text-xs text-neutral-400">
                     Data organisasi digunakan sebagai referensi identitas peminjam
-                    ketika mengajukan peminjaman aset. Data saat ini masih berupa ilustrasi frontend.
+                    ketika mengajukan peminjaman aset. Data tersimpan di database FAMS.
                 </p>
             </div>
 
@@ -683,13 +794,12 @@ export default function DataOrganisasi() {
                                 </div>
 
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    <Field label="Kode Organisasi" required>
+                                    <Field label="Kode Organisasi (Opsional)">
                                         <input
-                                            required
                                             value={form.code}
                                             onChange={(event) => updateForm('code', event.target.value)}
                                             className={inputClass}
-                                            placeholder="Contoh: ORG-001"
+                                            placeholder="Kosongkan untuk dibuat otomatis"
                                         />
                                     </Field>
 
@@ -729,6 +839,62 @@ export default function DataOrganisasi() {
                                         />
                                     </Field>
                                 </div>
+
+                                <Field label="Foto / Logo Organisasi">
+                                    <div className="flex flex-wrap items-center gap-4">
+                                        {photoPreview && !removePhoto && (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openPhotoPreview(
+                                                        photoPreview,
+                                                        photoFile?.name ||
+                                                            form.name ||
+                                                            'Logo Organisasi',
+                                                    )
+                                                }
+                                                title="Lihat pratinjau logo"
+                                                aria-label="Lihat pratinjau logo organisasi"
+                                                className="h-16 w-16 shrink-0 cursor-zoom-in overflow-hidden rounded-xl"
+                                            >
+                                                <img
+                                                    src={photoPreview}
+                                                    alt=""
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            </button>
+                                        )}
+                                        <div className="min-w-0 flex-1 space-y-2">
+                                            <input
+                                                type="file"
+                                                accept="image/jpeg,image/png,image/webp"
+                                                onChange={(event) => {
+                                                    setPhotoFile(
+                                                        event.target.files?.[0] ??
+                                                            null,
+                                                    );
+                                                    setRemovePhoto(false);
+                                                }}
+                                                className={inputClass}
+                                            />
+                                            <p className="text-[11px] text-neutral-400">
+                                                JPG, PNG, atau WEBP, maksimal 5 MB.
+                                            </p>
+                                            {(form.photo || photoFile) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setPhotoFile(null);
+                                                        setRemovePhoto(true);
+                                                    }}
+                                                    className="text-xs font-medium text-neutral-600 underline"
+                                                >
+                                                    Hapus foto
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </Field>
                             </section>
 
                             <section className="space-y-4">
@@ -831,9 +997,14 @@ export default function DataOrganisasi() {
 
                             <button
                                 type="submit"
-                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
+                                disabled={saving}
+                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
                             >
-                                {editingId !== null ? 'Simpan Perubahan' : 'Simpan Organisasi'}
+                                {saving
+                                    ? 'Menyimpan...'
+                                    : editingId !== null
+                                      ? 'Simpan Perubahan'
+                                      : 'Simpan Organisasi'}
                             </button>
                         </div>
                     </form>
@@ -881,8 +1052,28 @@ export default function DataOrganisasi() {
                                     </span>
                                 </div>
 
-                                <h3 className="mt-3 text-xl font-bold text-neutral-950">
-                                    {detailOrganization.name}
+                                <h3 className="mt-3 flex items-center gap-3 text-xl font-bold text-neutral-950">
+                                    {detailOrganization.photo && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                openPhotoPreview(
+                                                    detailOrganization.photo,
+                                                    detailOrganization.name,
+                                                )
+                                            }
+                                            title="Lihat logo"
+                                            aria-label={`Lihat logo ${detailOrganization.name}`}
+                                            className="h-16 w-16 shrink-0 cursor-zoom-in overflow-hidden rounded-xl"
+                                        >
+                                            <img
+                                                src={detailOrganization.photo}
+                                                alt=""
+                                                className="h-full w-full object-cover"
+                                            />
+                                        </button>
+                                    )}
+                                    <span>{detailOrganization.name}</span>
                                 </h3>
                                 <p className="mt-1 text-xs text-neutral-400">
                                     Terdaftar {formatDate(detailOrganization.createdAt)}
@@ -895,7 +1086,7 @@ export default function DataOrganisasi() {
                                 </h4>
 
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    <DetailBox label="Kode Organisasi" value={detailOrganization.code} />
+                                    <DetailBox label="Kode Organisasi" value={detailOrganization.code || '-'} />
                                     <DetailBox label="Nama Organisasi" value={detailOrganization.name} />
                                     <DetailBox label="Jenis Organisasi" value={detailOrganization.type} />
                                     <DetailBox label="Fakultas / Unit" value={detailOrganization.faculty} />
@@ -953,7 +1144,7 @@ export default function DataOrganisasi() {
                         </h2>
 
                         <p className="mt-2 text-sm leading-6 text-neutral-500">
-                            Data organisasi ini akan dihapus dari daftar tampilan.
+                            Data organisasi ini akan dihapus secara permanen.
                             Pastikan organisasi tersebut tidak sedang digunakan
                             pada data peminjaman.
                         </p>
@@ -978,6 +1169,12 @@ export default function DataOrganisasi() {
                     </div>
                 </div>
             )}
+            <ImagePreviewModal
+                preview={previewModal}
+                heading="Pratinjau Logo Organisasi"
+                onClose={closePhotoPreview}
+                onIndexChange={changePhotoPreviewIndex}
+            />
         </DashboardLayout>
     );
 }

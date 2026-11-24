@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
@@ -7,19 +8,25 @@ import AssetManagementBanner from '../../../components/dashboard/AssetManagement
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '../../../lib/management-client';
+import { nextNumberedUniqueValue } from '../../../lib/duplicate';
 
 type AssetCategory = 'Barang' | 'Ruangan';
 type AssetCondition = 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
 type AssetStatus = 'Tersedia' | 'Dipinjam' | 'Maintenance' | 'Tidak Aktif';
 
 type Asset = {
-    id: number;
+    id: string;
     code: string;
     name: string;
     category: AssetCategory;
-    itemId?: number;
-    roomId?: number;
-    locationId: number;
+    itemId: string;
+    roomId: string;
+    locationId: string;
+    rfidCode: string;
     quantity: number;
     condition: AssetCondition;
     status: AssetStatus;
@@ -28,7 +35,6 @@ type Asset = {
     fundingSource: string;
     description: string;
     images: string[];
-    imageNames?: string[];
 };
 
 type AssetForm = {
@@ -46,125 +52,24 @@ type AssetForm = {
     fundingSource: string;
     description: string;
     images: string[];
-    imageNames: string[];
 };
 
-const MAX_IMAGES = 10;
 const PER_PAGE = 5;
 
-const masterItems = [
-    { id: 1, name: 'Laptop Lenovo ThinkPad' },
-    { id: 2, name: 'Proyektor Epson' },
-    { id: 3, name: 'Kursi Kuliah' },
-    { id: 4, name: 'Meja Komputer' },
-    { id: 5, name: 'Printer Epson L3210' },
-];
+type MasterRecord = {
+    id: string;
+    code: string;
+    name: string;
+    locationId: string;
+    rfidCode: string;
+    images: string[];
+    status?: string;
+};
 
-const masterRooms = [
-    { id: 1, name: 'Ruang Laboratorium Komputer' },
-    { id: 2, name: 'Ruang Kelas 301' },
-    { id: 3, name: 'Ruang Rapat Fakultas' },
-    { id: 4, name: 'Ruang Dosen' },
-];
-
-const masterLocations = [
-    { id: 1, name: 'Gedung Fakultas Teknologi Informasi' },
-    { id: 2, name: 'Gedung Rektorat' },
-    { id: 3, name: 'Gedung Laboratorium' },
-];
-
-const initialAssets: Asset[] = [
-    {
-        id: 1,
-        code: 'FAMS-BRG-001',
-        name: 'Laptop Lenovo ThinkPad',
-        category: 'Barang',
-        itemId: 1,
-        locationId: 1,
-        quantity: 10,
-        condition: 'Baik',
-        status: 'Tersedia',
-        acquisitionDate: '2025-01-15',
-        price: 12500000,
-        fundingSource: 'APBN',
-        description: 'Laptop operasional untuk kebutuhan akademik.',
-        images: [
-            'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800',
-            'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=800',
-        ],
-    },
-    {
-        id: 2,
-        code: 'FAMS-BRG-002',
-        name: 'Proyektor Epson',
-        category: 'Barang',
-        itemId: 2,
-        locationId: 3,
-        quantity: 5,
-        condition: 'Baik',
-        status: 'Dipinjam',
-        acquisitionDate: '2025-03-10',
-        price: 6500000,
-        fundingSource: 'APBD',
-        description: 'Proyektor untuk kegiatan perkuliahan.',
-        images: [
-            'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=800',
-        ],
-    },
-    {
-        id: 3,
-        code: 'FAMS-RNG-001',
-        name: 'Ruang Laboratorium Komputer',
-        category: 'Ruangan',
-        roomId: 1,
-        locationId: 1,
-        quantity: 1,
-        condition: 'Baik',
-        status: 'Tersedia',
-        acquisitionDate: '2024-08-01',
-        price: 150000000,
-        fundingSource: 'APBN',
-        description: 'Laboratorium komputer untuk praktikum mahasiswa.',
-        images: [
-            'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800',
-            'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800',
-        ],
-    },
-    {
-        id: 4,
-        code: 'FAMS-BRG-003',
-        name: 'Printer Epson L3210',
-        category: 'Barang',
-        itemId: 5,
-        locationId: 2,
-        quantity: 3,
-        condition: 'Rusak Ringan',
-        status: 'Maintenance',
-        acquisitionDate: '2024-11-20',
-        price: 2800000,
-        fundingSource: 'Hibah',
-        description: 'Printer untuk kebutuhan administrasi.',
-        images: [],
-    },
-    {
-        id: 5,
-        code: 'FAMS-RNG-002',
-        name: 'Ruang Kelas 301',
-        category: 'Ruangan',
-        roomId: 2,
-        locationId: 1,
-        quantity: 1,
-        condition: 'Baik',
-        status: 'Tersedia',
-        acquisitionDate: '2024-08-01',
-        price: 95000000,
-        fundingSource: 'APBD',
-        description: 'Ruang perkuliahan mahasiswa.',
-        images: [
-            'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?w=800',
-        ],
-    },
-];
+type LocationOption = {
+    id: string;
+    name: string;
+};
 
 const emptyForm: AssetForm = {
     code: '',
@@ -181,7 +86,6 @@ const emptyForm: AssetForm = {
     fundingSource: 'APBN',
     description: '',
     images: [],
-    imageNames: [],
 };
 
 const formatCurrency = (value: number) =>
@@ -238,18 +142,59 @@ const inputClass =
     'w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-3 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-500 focus:ring-2 focus:ring-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400';
 
 export default function DataAset() {
-    const [assets, setAssets] = useState<Asset[]>(initialAssets);
+    const [assets, setAssets] = useState<Asset[]>([]);
+    const [items, setItems] = useState<MasterRecord[]>([]);
+    const [rooms, setRooms] = useState<MasterRecord[]>([]);
+    const [locations, setLocations] = useState<LocationOption[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('Semua');
     const [statusFilter, setStatusFilter] = useState('Semua');
+    const [locationFilter, setLocationFilter] = useState('Semua');
     const [currentPage, setCurrentPage] = useState(1);
     const [modalOpen, setModalOpen] = useState(false);
     const [detailAsset, setDetailAsset] = useState<Asset | null>(null);
-    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState<AssetForm>(emptyForm);
-    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     const [imagePreview, setImagePreview] =
         useState<ImagePreviewState | null>(null);
+
+    async function loadAssets() {
+        const result = await managementRequest<{ assets: Asset[] }>(
+            '/api/admin/assets',
+        );
+        setAssets(result.assets);
+    }
+
+    useEffect(() => {
+        let active = true;
+        Promise.all([
+            managementRequest<{ assets: Asset[] }>('/api/admin/assets'),
+            managementRequest<{ items: MasterRecord[] }>('/api/admin/items'),
+            managementRequest<{ rooms: MasterRecord[] }>('/api/admin/rooms'),
+            managementRequest<{ locations: LocationOption[] }>(
+                '/api/admin/locations',
+            ),
+        ])
+            .then(([assetResult, itemResult, roomResult, locationResult]) => {
+                if (!active) return;
+                setAssets(assetResult.assets);
+                setItems(itemResult.items);
+                setRooms(roomResult.rooms);
+                setLocations(locationResult.locations);
+            })
+            .catch((error: unknown) => {
+                if (active) alert(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
     useEffect(() => {
         if (!imagePreview) return;
@@ -268,9 +213,20 @@ export default function DataAset() {
         return assets.filter((asset) => {
             const keyword = search.toLowerCase().trim();
 
-            const matchesSearch =
-                asset.name.toLowerCase().includes(keyword) ||
-                asset.code.toLowerCase().includes(keyword);
+            const matchesSearch = [
+                asset.name,
+                asset.code,
+                asset.category,
+                asset.rfidCode,
+                getLocationName(asset.locationId),
+                asset.quantity.toString(),
+                asset.condition,
+                asset.status,
+                asset.acquisitionDate,
+                asset.price.toString(),
+                asset.fundingSource,
+                asset.description,
+            ].some((value) => value.toLowerCase().includes(keyword));
 
             const matchesCategory =
                 categoryFilter === 'Semua' ||
@@ -279,10 +235,13 @@ export default function DataAset() {
             const matchesStatus =
                 statusFilter === 'Semua' ||
                 asset.status === statusFilter;
+            const matchesLocation =
+                locationFilter === 'Semua' ||
+                asset.locationId === locationFilter;
 
-            return matchesSearch && matchesCategory && matchesStatus;
+            return matchesSearch && matchesCategory && matchesStatus && matchesLocation;
         });
-    }, [assets, search, categoryFilter, statusFilter]);
+    }, [assets, search, categoryFilter, statusFilter, locationFilter, locations]);
 
     const totalPages = Math.max(
         1,
@@ -336,7 +295,7 @@ export default function DataAset() {
         setEditingId(null);
         setForm({
             ...emptyForm,
-            code: `FAMS-${Date.now().toString().slice(-6)}`,
+            code: `FAMS-${Date.now()}`,
         });
         setModalOpen(true);
     }
@@ -346,11 +305,11 @@ export default function DataAset() {
 
         setForm({
             code: asset.code,
-            name: asset.name,
+            name: '',
             category: asset.category,
-            itemId: asset.itemId?.toString() ?? '',
-            roomId: asset.roomId?.toString() ?? '',
-            locationId: asset.locationId.toString(),
+            itemId: asset.itemId,
+            roomId: asset.roomId,
+            locationId: asset.locationId,
             quantity: asset.quantity.toString(),
             condition: asset.condition,
             status: asset.status,
@@ -359,11 +318,34 @@ export default function DataAset() {
             fundingSource: asset.fundingSource,
             description: asset.description,
             images: [...asset.images],
-            imageNames:
-                asset.imageNames ??
-                asset.images.map((_, index) => `Foto ${index + 1}`),
         });
 
+        setModalOpen(true);
+    }
+
+    function duplicateAsset(asset: Asset) {
+        setEditingId(null);
+        setDetailAsset(null);
+        setForm({
+            code: nextNumberedUniqueValue(
+                asset.code,
+                assets.map((existingAsset) => existingAsset.code),
+                40,
+            ),
+            name: asset.name,
+            category: asset.category,
+            itemId: '',
+            roomId: '',
+            locationId: '',
+            quantity: asset.quantity.toString(),
+            condition: asset.condition,
+            status: asset.status,
+            acquisitionDate: asset.acquisitionDate,
+            price: asset.price.toString(),
+            fundingSource: asset.fundingSource,
+            description: asset.description,
+            images: [],
+        });
         setModalOpen(true);
     }
 
@@ -384,125 +366,40 @@ export default function DataAset() {
             itemId: '',
             roomId: '',
             name: '',
-            quantity: category === 'Ruangan' ? '1' : '1',
+            locationId: '',
+            quantity: '1',
+            images: [],
         }));
     }
 
     function handleMasterSelection(value: string) {
         if (form.category === 'Barang') {
-            const selected = masterItems.find(
-                (item) => item.id.toString() === value,
-            );
+            const selected = items.find((item) => item.id === value);
 
             setForm((previous) => ({
                 ...previous,
                 itemId: value,
+                roomId: '',
                 name: selected?.name ?? '',
+                locationId: selected?.locationId ?? '',
+                images: selected?.images ?? [],
             }));
         } else {
-            const selected = masterRooms.find(
-                (room) => room.id.toString() === value,
-            );
+            const selected = rooms.find((room) => room.id === value);
 
             setForm((previous) => ({
                 ...previous,
+                itemId: '',
                 roomId: value,
                 name: selected?.name ?? '',
+                locationId: selected?.locationId ?? '',
+                images: selected?.images ?? [],
             }));
         }
     }
 
-    function readImage(file: File): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-
-            reader.onload = () => {
-                if (typeof reader.result === 'string') {
-                    resolve(reader.result);
-                } else {
-                    reject(new Error('Format gambar tidak valid.'));
-                }
-            };
-
-            reader.onerror = () => reject(new Error('Gagal membaca gambar.'));
-            reader.readAsDataURL(file);
-        });
-    }
-
-    async function handleImageUpload(
-        event: React.ChangeEvent<HTMLInputElement>,
-    ) {
-        const files = Array.from(event.target.files ?? []);
-
-        event.target.value = '';
-
-        if (files.length === 0) return;
-
-        const remainingSlots = MAX_IMAGES - form.images.length;
-
-        if (remainingSlots <= 0) {
-            alert(`Maksimal ${MAX_IMAGES} gambar untuk satu aset.`);
-            return;
-        }
-
-        const validFiles = files.filter((file) =>
-            ['image/jpeg', 'image/png', 'image/webp'].includes(file.type),
-        );
-
-        if (validFiles.length !== files.length) {
-            alert('Format gambar harus JPG, PNG, atau WEBP.');
-        }
-
-        const selectedFiles = validFiles.slice(0, remainingSlots);
-
-        if (selectedFiles.length === 0) return;
-
-        if (validFiles.length > remainingSlots) {
-            alert(
-                `Hanya ${remainingSlots} gambar yang dapat ditambahkan. Maksimal ${MAX_IMAGES} gambar.`,
-            );
-        }
-
-        try {
-            const imageResults = await Promise.all(
-                selectedFiles.map((file) => readImage(file)),
-            );
-
-            setForm((previous) => ({
-                ...previous,
-                images: [...previous.images, ...imageResults].slice(
-                    0,
-                    MAX_IMAGES,
-                ),
-                imageNames: [
-                    ...previous.imageNames,
-                    ...selectedFiles.map((file) => file.name),
-                ].slice(0, MAX_IMAGES),
-            }));
-        } catch {
-            alert('Ada gambar yang gagal dibaca. Silakan coba kembali.');
-        }
-    }
-
-    function removeImage(index: number) {
-        setForm((previous) => ({
-            ...previous,
-            images: previous.images.filter(
-                (_, imageIndex) => imageIndex !== index,
-            ),
-            imageNames: previous.imageNames.filter(
-                (_, imageIndex) => imageIndex !== index,
-            ),
-        }));
-    }
-
-    function saveAsset(event: React.FormEvent<HTMLFormElement>) {
+    async function saveAsset(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-
-        if (!form.locationId) {
-            alert('Silakan pilih lokasi aset.');
-            return;
-        }
 
         if (form.category === 'Barang' && !form.itemId) {
             alert('Silakan pilih barang.');
@@ -514,71 +411,66 @@ export default function DataAset() {
             return;
         }
 
-        if (form.images.length === 0) {
-            alert('Silakan tambahkan minimal satu foto aset.');
+        const selectedSource =
+            form.category === 'Barang'
+                ? items.find((item) => item.id === form.itemId)
+                : rooms.find((room) => room.id === form.roomId);
+        if (!selectedSource) {
+            alert('Sumber barang atau ruangan tidak ditemukan. Muat ulang data.');
+            return;
+        }
+        if (!selectedSource.locationId) {
+            alert('Lokasi sumber barang atau ruangan belum diatur.');
             return;
         }
 
-        const selectedMaster =
-            form.category === 'Barang'
-                ? masterItems.find(
-                      (item) => item.id.toString() === form.itemId,
-                  )
-                : masterRooms.find(
-                      (room) => room.id.toString() === form.roomId,
-                  );
+        const payload = new FormData();
+        payload.set('code', form.code.trim());
+        payload.set('category', form.category);
+        payload.set('itemId', form.category === 'Barang' ? form.itemId : '');
+        payload.set('roomId', form.category === 'Ruangan' ? form.roomId : '');
+        payload.set('quantity', form.category === 'Ruangan' ? '1' : form.quantity);
+        payload.set('condition', form.condition);
+        payload.set('status', form.status);
+        payload.set('acquisitionDate', form.acquisitionDate);
+        payload.set('price', form.price || '0');
+        payload.set('fundingSource', form.fundingSource.trim());
+        payload.set('description', form.description.trim());
 
-        const payload: Asset = {
-            id: editingId ?? Date.now(),
-            code: form.code.trim(),
-            name: selectedMaster?.name ?? form.name.trim(),
-            category: form.category,
-            itemId:
-                form.category === 'Barang'
-                    ? Number(form.itemId)
-                    : undefined,
-            roomId:
-                form.category === 'Ruangan'
-                    ? Number(form.roomId)
-                    : undefined,
-            locationId: Number(form.locationId),
-            quantity:
-                form.category === 'Ruangan' ? 1 : Number(form.quantity || 1),
-            condition: form.condition,
-            status: form.status,
-            acquisitionDate: form.acquisitionDate,
-            price: Number(form.price || 0),
-            fundingSource: form.fundingSource,
-            description: form.description.trim(),
-            images: [...form.images],
-            imageNames: [...form.imageNames],
-        };
-
-        if (editingId !== null) {
-            setAssets((previous) =>
-                previous.map((asset) =>
-                    asset.id === editingId ? payload : asset,
-                ),
+        setSaving(true);
+        try {
+            await managementRequest<{ asset: Asset }>(
+                editingId
+                    ? `/api/admin/assets/${editingId}`
+                    : '/api/admin/assets',
+                {
+                    method: editingId ? 'PATCH' : 'POST',
+                    body: payload,
+                },
             );
-        } else {
-            setAssets((previous) => [payload, ...previous]);
+            await loadAssets();
             setCurrentPage(1);
+            closeModal();
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+        } finally {
+            setSaving(false);
         }
-
-        setModalOpen(false);
-        setEditingId(null);
-        setForm(emptyForm);
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
         if (deleteId === null) return;
-
-        setAssets((previous) =>
-            previous.filter((asset) => asset.id !== deleteId),
-        );
-
-        setDeleteId(null);
-        setDetailAsset(null);
+        try {
+            await managementRequest<{ deleted: boolean }>(
+                `/api/admin/assets/${deleteId}`,
+                { method: 'DELETE' },
+            );
+            await loadAssets();
+            setDeleteId(null);
+            setDetailAsset(null);
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+        }
     }
 
     function closeModal() {
@@ -587,8 +479,9 @@ export default function DataAset() {
         setForm(emptyForm);
     }
 
-    const getLocationName = (id: number) =>
-        masterLocations.find((location) => location.id === id)?.name ?? '-';
+    function getLocationName(id: string) {
+        return locations.find((location) => location.id === id)?.name ?? '-';
+    }
 
     return (
         <DashboardLayout>
@@ -634,6 +527,7 @@ export default function DataAset() {
                     <button
                         type="button"
                         onClick={openCreateModal}
+                        disabled={loading}
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
                     >
                         <Icon name="plus" size={17} />
@@ -678,7 +572,7 @@ export default function DataAset() {
                                         setSearch(event.target.value);
                                         setCurrentPage(1);
                                     }}
-                                    placeholder="Cari kode atau nama aset..."
+                                    placeholder="Cari kode, nama, RFID, atau lokasi aset..."
                                     className={`${inputClass} pl-9 sm:w-64`}
                                 />
                             </div>
@@ -710,6 +604,23 @@ export default function DataAset() {
                                 <option value="Maintenance">Maintenance</option>
                                 <option value="Tidak Aktif">Tidak Aktif</option>
                             </select>
+
+                            <select
+                                value={locationFilter}
+                                onChange={(event) => {
+                                    setLocationFilter(event.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                className={inputClass}
+                            >
+                                <option value="Semua">Semua Lokasi</option>
+                                {locations.map((location) => (
+                                    <option key={location.id} value={location.id}>
+                                        {location.name}
+                                    </option>
+                                ))}
+                            </select>
+
                         </div>
                     </div>
 
@@ -755,7 +666,6 @@ export default function DataAset() {
                                                         if (asset.images[0]) {
                                                             setImagePreview({
                                                                 images: asset.images,
-                                                                imageNames: asset.imageNames,
                                                                 index: 0,
                                                                 entityName: asset.name,
                                                             });
@@ -786,6 +696,9 @@ export default function DataAset() {
 
                                                     <p className="mt-1 text-xs text-neutral-400">
                                                         {asset.code}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] text-neutral-400">
+                                                        RFID: {asset.rfidCode}
                                                     </p>
 
                                                     {asset.images.length > 0 && (
@@ -849,6 +762,16 @@ export default function DataAset() {
 
                                                 <button
                                                     type="button"
+                                                    title="Duplikat"
+                                                    aria-label={`Duplikat aset ${asset.name}`}
+                                                    onClick={() => duplicateAsset(asset)}
+                                                    className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                                                >
+                                                    <Icon name="copy" size={16} />
+                                                </button>
+
+                                                <button
+                                                    type="button"
                                                     title="Hapus"
                                                     onClick={() => setDeleteId(asset.id)}
                                                     className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
@@ -873,12 +796,16 @@ export default function DataAset() {
                                             />
 
                                             <p className="font-semibold text-neutral-700">
-                                                Aset tidak ditemukan
+                                                {loading
+                                                    ? 'Memuat data aset...'
+                                                    : 'Aset tidak ditemukan'}
                                             </p>
 
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                Ubah kata kunci atau filter pencarian.
-                                            </p>
+                                            {!loading && (
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    Ubah kata kunci atau filter pencarian.
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 )}
@@ -934,7 +861,7 @@ export default function DataAset() {
                 </section>
 
                 <p className="text-xs text-neutral-400">
-                    Data saat ini merupakan ilustrasi frontend dan belum tersimpan ke database.
+                    Foto aset mengikuti foto sumber barang atau ruangan yang dipilih.
                 </p>
             </div>
 
@@ -1042,6 +969,7 @@ export default function DataAset() {
                                             <select
                                                 required
                                                 value={form.itemId}
+                                                disabled={items.length === 0}
                                                 onChange={(event) =>
                                                     handleMasterSelection(
                                                         event.target.value,
@@ -1050,15 +978,17 @@ export default function DataAset() {
                                                 className={inputClass}
                                             >
                                                 <option value="">
-                                                    Pilih barang
+                                                    {items.length === 0
+                                                        ? 'Belum ada data barang'
+                                                        : 'Pilih barang'}
                                                 </option>
 
-                                                {masterItems.map((item) => (
+                                                {items.map((item) => (
                                                     <option
                                                         key={item.id}
                                                         value={item.id}
                                                     >
-                                                        {item.name}
+                                                        {item.code} — {item.name}
                                                     </option>
                                                 ))}
                                             </select>
@@ -1068,6 +998,7 @@ export default function DataAset() {
                                             <select
                                                 required
                                                 value={form.roomId}
+                                                disabled={rooms.length === 0}
                                                 onChange={(event) =>
                                                     handleMasterSelection(
                                                         event.target.value,
@@ -1076,46 +1007,50 @@ export default function DataAset() {
                                                 className={inputClass}
                                             >
                                                 <option value="">
-                                                    Pilih ruangan
+                                                    {rooms.length === 0
+                                                        ? 'Belum ada data ruangan'
+                                                        : 'Pilih ruangan'}
                                                 </option>
 
-                                                {masterRooms.map((room) => (
+                                                {rooms.map((room) => (
                                                     <option
                                                         key={room.id}
                                                         value={room.id}
                                                     >
-                                                        {room.name}
+                                                        {room.code} — {room.name}
                                                     </option>
                                                 ))}
                                             </select>
                                         </Field>
                                     )}
 
-                                    <Field label="Lokasi Penempatan" required>
-                                        <select
-                                            required
-                                            value={form.locationId}
-                                            onChange={(event) =>
-                                                updateForm(
-                                                    'locationId',
-                                                    event.target.value,
-                                                )
-                                            }
-                                            className={inputClass}
-                                        >
-                                            <option value="">
-                                                Pilih lokasi
-                                            </option>
+                                    <Field label="Lokasi Sumber">
+                                        <input
+                                            readOnly
+                                            value={getLocationName(form.locationId)}
+                                            className={`${inputClass} bg-neutral-50`}
+                                            placeholder="Otomatis dari data barang/ruangan"
+                                        />
+                                    </Field>
 
-                                            {masterLocations.map((location) => (
-                                                <option
-                                                    key={location.id}
-                                                    value={location.id}
-                                                >
-                                                    {location.name}
-                                                </option>
-                                            ))}
-                                        </select>
+                                    <Field label="Kode RFID Sumber">
+                                        <input
+                                            readOnly
+                                            value={
+                                                (form.category === 'Barang'
+                                                    ? items.find(
+                                                          (item) =>
+                                                              item.id === form.itemId,
+                                                      )
+                                                    : rooms.find(
+                                                          (room) =>
+                                                              room.id === form.roomId,
+                                                      )
+                                                )?.rfidCode ?? ''
+                                            }
+                                            className={`${inputClass} bg-neutral-50`}
+                                            placeholder="Otomatis dari data barang/ruangan"
+                                        />
                                     </Field>
                                 </div>
                             </section>
@@ -1148,7 +1083,6 @@ export default function DataAset() {
                                                         onClick={() =>
                                                             setImagePreview({
                                                                 images: form.images,
-                                                                imageNames: form.imageNames,
                                                                 index: 0,
                                                                 entityName: form.name || 'Aset',
                                                             })
@@ -1177,61 +1111,14 @@ export default function DataAset() {
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <p className="text-sm font-semibold text-neutral-900">
-                                                        Foto Aset
+                                                        Foto Sumber Aset
                                                     </p>
                                                     <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-neutral-500">
-                                                        {form.images.length}/{MAX_IMAGES} foto
+                                                        {form.images.length} foto
                                                     </span>
                                                 </div>
                                                 <p className="mt-1 text-xs leading-5 text-neutral-500">
-                                                    Unggah satu atau beberapa foto aset. Maksimal 10 foto.
-                                                </p>
-
-                                                <div className="mt-3 flex flex-wrap items-center gap-3">
-                                                    {form.images.length < MAX_IMAGES && (
-                                                        <label
-                                                            htmlFor="asset-images"
-                                                            className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:border-neutral-950 hover:text-neutral-950"
-                                                        >
-                                                            <Icon name="plus" size={14} />
-                                                            {form.images.length > 0
-                                                                ? 'Tambah Foto'
-                                                                : 'Pilih Foto'}
-                                                        </label>
-                                                    )}
-
-                                                    {form.images.length > 0 && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setForm((previous) => ({
-                                                                    ...previous,
-                                                                    images: [],
-                                                                    imageNames: [],
-                                                                }))
-                                                            }
-                                                            className="text-xs font-medium text-neutral-500 transition hover:text-neutral-950"
-                                                        >
-                                                            Hapus semua foto
-                                                        </button>
-                                                    )}
-                                                </div>
-
-                                                <input
-                                                    id="asset-images"
-                                                    name="asset-images"
-                                                    type="file"
-                                                    accept="image/jpeg,image/png,image/webp"
-                                                    multiple
-                                                    className="sr-only"
-                                                    disabled={
-                                                        form.images.length >= MAX_IMAGES
-                                                    }
-                                                    onChange={handleImageUpload}
-                                                />
-
-                                                <p className="mt-2 text-[10px] text-neutral-400">
-                                                    JPG, PNG, atau WEBP.
+                                                    Foto mengikuti dokumentasi pada data barang atau ruangan yang dipilih.
                                                 </p>
                                             </div>
                                         </div>
@@ -1240,15 +1127,14 @@ export default function DataAset() {
                                             <div className="flex flex-wrap gap-3">
                                                 {form.images.map((image, index) => (
                                                     <div
-                                                        key={`${image.slice(0, 30)}-${index}`}
-                                                        className="group relative h-16 w-16 overflow-hidden rounded-lg border border-neutral-200 bg-white"
+                                                        key={`${image}-${index}`}
+                                                        className="relative h-16 w-16 overflow-hidden rounded-lg border border-neutral-200 bg-white"
                                                     >
                                                         <button
                                                             type="button"
                                                             onClick={() =>
                                                                 setImagePreview({
                                                                     images: form.images,
-                                                                    imageNames: form.imageNames,
                                                                     index,
                                                                     entityName: form.name || 'Aset',
                                                                 })
@@ -1261,16 +1147,6 @@ export default function DataAset() {
                                                                 alt={`Foto aset ${index + 1}`}
                                                                 className="h-full w-full object-cover"
                                                             />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                removeImage(index)
-                                                            }
-                                                            title={`Hapus foto ${index + 1}`}
-                                                            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-neutral-800 shadow"
-                                                        >
-                                                            <Icon name="x" size={12} />
                                                         </button>
                                                     </div>
                                                 ))}
@@ -1477,7 +1353,6 @@ export default function DataAset() {
                                                 onClick={() =>
                                                     setImagePreview({
                                                         images: detailAsset.images,
-                                                        imageNames: detailAsset.imageNames,
                                                         index,
                                                         entityName: detailAsset.name,
                                                     })
@@ -1508,6 +1383,7 @@ export default function DataAset() {
                             <div className="grid grid-cols-2 gap-4">
                                 {[
                                     ['Kategori', detailAsset.category],
+                                    ['Kode RFID', detailAsset.rfidCode],
                                     ['Lokasi', getLocationName(detailAsset.locationId)],
                                     ['Jumlah', `${detailAsset.quantity} unit`],
                                     ['Kondisi', detailAsset.condition],

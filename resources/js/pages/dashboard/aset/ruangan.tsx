@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
@@ -7,6 +8,12 @@ import AssetManagementBanner from '../../../components/dashboard/AssetManagement
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '../../../lib/management-client';
+import { nextNumberedUniqueValue } from '../../../lib/duplicate';
+import { copyStoredImage } from '../../../lib/image-file';
 
 type RoomType =
     | 'Ruang Kelas'
@@ -17,21 +24,32 @@ type RoomType =
     | 'Lainnya';
 
 type Room = {
-    id: number;
+    id: string;
     code: string;
     name: string;
     type: RoomType;
-    locationId: number;
+    locationId: string;
     floor: string;
     roomNumber: string;
+    rfidCode: string;
     capacity: number;
     area: number;
     responsiblePerson: string;
     facilities: string[];
     description: string;
     images: string[];
-    imageNames: string[];
     createdAt: string;
+};
+
+type RoomFormImage = {
+    src: string;
+    name: string;
+    file?: File;
+};
+
+type LocationOption = {
+    id: string;
+    name: string;
 };
 
 type RoomForm = {
@@ -41,13 +59,13 @@ type RoomForm = {
     locationId: string;
     floor: string;
     roomNumber: string;
+    rfidCode: string;
     capacity: string;
     area: string;
     responsiblePerson: string;
     facilities: string;
     description: string;
-    images: string[];
-    imageNames: string[];
+    images: RoomFormImage[];
 };
 
 const MAX_IMAGES = 10;
@@ -62,107 +80,6 @@ const roomTypeStyles: Record<RoomType, string> = {
     Lainnya: 'bg-neutral-100 text-neutral-600',
 };
 
-const masterLocations = [
-    { id: 1, name: 'Gedung Fakultas Teknologi Informasi' },
-    { id: 2, name: 'Gedung Rektorat' },
-    { id: 3, name: 'Gedung Laboratorium' },
-];
-
-const initialRooms: Room[] = [
-    {
-        id: 1,
-        code: 'FAMS-RNG-001',
-        name: 'Laboratorium Komputer',
-        type: 'Laboratorium',
-        locationId: 1,
-        floor: '2',
-        roomNumber: '201',
-        capacity: 30,
-        area: 72,
-        responsiblePerson: 'Rendra Nur Yuliadi',
-        facilities: ['Komputer', 'Proyektor', 'AC', 'Whiteboard'],
-        description: 'Laboratorium komputer untuk kegiatan praktikum mahasiswa Fakultas Teknologi Informasi.',
-        images: [
-            'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800',
-            'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800',
-        ],
-        imageNames: ['laboratorium-1.jpg', 'laboratorium-2.jpg'],
-        createdAt: '2024-08-01',
-    },
-    {
-        id: 2,
-        code: 'FAMS-RNG-002',
-        name: 'Ruang Kelas 301',
-        type: 'Ruang Kelas',
-        locationId: 1,
-        floor: '3',
-        roomNumber: '301',
-        capacity: 40,
-        area: 80,
-        responsiblePerson: 'Bagian Akademik',
-        facilities: ['Meja', 'Kursi', 'Proyektor', 'AC'],
-        description: 'Ruang perkuliahan untuk kegiatan belajar mengajar.',
-        images: [
-            'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?w=800',
-        ],
-        imageNames: ['ruang-kelas.jpg'],
-        createdAt: '2024-08-01',
-    },
-    {
-        id: 3,
-        code: 'FAMS-RNG-003',
-        name: 'Ruang Rapat Fakultas',
-        type: 'Ruang Rapat',
-        locationId: 1,
-        floor: '1',
-        roomNumber: '105',
-        capacity: 20,
-        area: 45,
-        responsiblePerson: 'Bagian Tata Usaha',
-        facilities: ['Meja Rapat', 'Kursi', 'TV', 'AC'],
-        description: 'Ruangan untuk rapat internal fakultas dan kegiatan koordinasi.',
-        images: [],
-        imageNames: [],
-        createdAt: '2024-09-10',
-    },
-    {
-        id: 4,
-        code: 'FAMS-RNG-004',
-        name: 'Ruang Dosen',
-        type: 'Ruang Dosen',
-        locationId: 1,
-        floor: '2',
-        roomNumber: '205',
-        capacity: 15,
-        area: 50,
-        responsiblePerson: 'Bagian Akademik',
-        facilities: ['Meja Kerja', 'Kursi', 'AC', 'Lemari'],
-        description: 'Ruang kerja dosen Fakultas Teknologi Informasi.',
-        images: [
-            'https://images.unsplash.com/photo-1497366412874-3415097a27e7?w=800',
-        ],
-        imageNames: ['ruang-dosen.jpg'],
-        createdAt: '2024-10-15',
-    },
-    {
-        id: 5,
-        code: 'FAMS-RNG-005',
-        name: 'Ruang Administrasi',
-        type: 'Ruang Administrasi',
-        locationId: 2,
-        floor: '1',
-        roomNumber: '102',
-        capacity: 10,
-        area: 35,
-        responsiblePerson: 'Staff Administrasi',
-        facilities: ['Komputer', 'Printer', 'Meja', 'AC'],
-        description: 'Ruang pelayanan administrasi dan pengelolaan dokumen.',
-        images: [],
-        imageNames: [],
-        createdAt: '2025-01-20',
-    },
-];
-
 const emptyForm: RoomForm = {
     code: '',
     name: '',
@@ -170,13 +87,13 @@ const emptyForm: RoomForm = {
     locationId: '',
     floor: '',
     roomNumber: '',
+    rfidCode: '',
     capacity: '',
     area: '',
     responsiblePerson: '',
     facilities: '',
     description: '',
     images: [],
-    imageNames: [],
 };
 
 const roomTypes: RoomType[] = [
@@ -212,7 +129,9 @@ const inputClass =
     'w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-3 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-500 focus:ring-2 focus:ring-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400';
 
 export default function DataRuangan() {
-    const [rooms, setRooms] = useState<Room[]>(initialRooms);
+    const [rooms, setRooms] = useState<Room[]>([]);
+    const [locations, setLocations] = useState<LocationOption[]>([]);
+    const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState('Semua');
     const [locationFilter, setLocationFilter] = useState('Semua');
@@ -220,42 +139,61 @@ export default function DataRuangan() {
 
     const [modalOpen, setModalOpen] = useState(false);
     const [detailRoom, setDetailRoom] = useState<Room | null>(null);
-    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState<RoomForm>(emptyForm);
-    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
 
     const [imagePreview, setImagePreview] =
         useState<ImagePreviewState | null>(null);
 
     useEffect(() => {
-        if (!imagePreview) return;
-
-        function handleKeyDown(event: KeyboardEvent) {
-            if (event.key === 'Escape') {
-                setImagePreview(null);
-            }
-        }
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [imagePreview]);
+        let active = true;
+        Promise.all([
+            managementRequest<{ rooms: Room[] }>('/api/admin/rooms'),
+            managementRequest<{ locations: LocationOption[] }>(
+                '/api/admin/locations',
+            ),
+        ])
+            .then(([roomResult, locationResult]) => {
+                if (!active) return;
+                setRooms(roomResult.rooms);
+                setLocations(locationResult.locations);
+            })
+            .catch((error: unknown) => {
+                if (active) alert(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const filteredRooms = useMemo(() => {
         return rooms.filter((room) => {
             const keyword = search.toLowerCase().trim();
 
-            const matchesSearch =
-                room.name.toLowerCase().includes(keyword) ||
-                room.code.toLowerCase().includes(keyword) ||
-                room.roomNumber.toLowerCase().includes(keyword) ||
-                room.responsiblePerson.toLowerCase().includes(keyword);
+            const matchesSearch = [
+                room.name,
+                room.code,
+                room.type,
+                room.rfidCode,
+                room.floor,
+                room.roomNumber,
+                room.responsiblePerson,
+                room.facilities.join(' '),
+                room.description,
+                getLocationName(room.locationId),
+            ].some((value) => value.toLowerCase().includes(keyword));
 
             const matchesType =
                 typeFilter === 'Semua' || room.type === typeFilter;
 
             const matchesLocation =
                 locationFilter === 'Semua' ||
-                room.locationId.toString() === locationFilter;
+                room.locationId === locationFilter;
 
             return matchesSearch && matchesType && matchesLocation;
         });
@@ -308,10 +246,9 @@ export default function DataRuangan() {
         },
     ];
 
-    function getLocationName(id: number) {
+    function getLocationName(id: string) {
         return (
-            masterLocations.find((location) => location.id === id)?.name ??
-            '-'
+            locations.find((location) => location.id === id)?.name ?? '-'
         );
     }
 
@@ -319,9 +256,60 @@ export default function DataRuangan() {
         setEditingId(null);
         setForm({
             ...emptyForm,
-            code: `FAMS-RNG-${String(
-                Math.max(0, ...rooms.map((room) => room.id)) + 1,
-            ).padStart(3, '0')}`,
+            code: `FAMS-RNG-${Date.now()}`,
+        });
+        setModalOpen(true);
+    }
+
+    async function duplicateRoom(room: Room) {
+        let images: RoomFormImage[];
+        try {
+            images = await Promise.all(
+                room.images.map(async (src, index) => {
+                    const file = await copyStoredImage(
+                        src,
+                        `${room.code}-copy-${index + 1}`,
+                    );
+                    return {
+                        src: await readImage(file),
+                        name: file.name,
+                        file,
+                    };
+                }),
+            );
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+            return;
+        }
+
+        setEditingId(null);
+        setForm({
+            code: nextNumberedUniqueValue(
+                room.code,
+                rooms.map((item) => item.code),
+                40,
+            ),
+            name: nextNumberedUniqueValue(
+                room.name,
+                rooms.map((item) => item.name),
+            ),
+            type: room.type,
+            locationId: room.locationId,
+            floor: room.floor,
+            roomNumber: nextNumberedUniqueValue(
+                room.roomNumber,
+                rooms
+                    .filter((item) => item.locationId === room.locationId)
+                    .map((item) => item.roomNumber),
+                40,
+            ),
+            rfidCode: '',
+            capacity: room.capacity.toString(),
+            area: room.area.toString(),
+            responsiblePerson: room.responsiblePerson,
+            facilities: room.facilities.join(', '),
+            description: room.description,
+            images,
         });
         setModalOpen(true);
     }
@@ -333,16 +321,19 @@ export default function DataRuangan() {
             code: room.code,
             name: room.name,
             type: room.type,
-            locationId: room.locationId.toString(),
+            locationId: room.locationId,
             floor: room.floor,
             roomNumber: room.roomNumber,
+            rfidCode: room.rfidCode,
             capacity: room.capacity.toString(),
             area: room.area.toString(),
             responsiblePerson: room.responsiblePerson,
             facilities: room.facilities.join(', '),
             description: room.description,
-            images: [...room.images],
-            imageNames: [...room.imageNames],
+            images: room.images.map((src, index) => ({
+                src,
+                name: `Foto ${index + 1}`,
+            })),
         });
 
         setModalOpen(true);
@@ -375,9 +366,7 @@ export default function DataRuangan() {
         });
     }
 
-    async function handleImageUpload(
-        event: React.ChangeEvent<HTMLInputElement>,
-    ) {
+    async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
         const files = Array.from(event.target.files ?? []);
         event.target.value = '';
 
@@ -390,12 +379,15 @@ export default function DataRuangan() {
             return;
         }
 
-        const validFiles = files.filter((file) =>
-            ['image/jpeg', 'image/png', 'image/webp'].includes(file.type),
+        const validFiles = files.filter(
+            (file) =>
+                ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) &&
+                file.size > 0 &&
+                file.size <= 5 * 1024 * 1024,
         );
 
         if (validFiles.length !== files.length) {
-            alert('Format gambar harus JPG, PNG, atau WEBP.');
+            alert('Foto harus JPG, PNG, atau WEBP dan maksimal 5 MB per file.');
         }
 
         const selectedFiles = validFiles.slice(0, remainingSlots);
@@ -410,22 +402,23 @@ export default function DataRuangan() {
 
         try {
             const imageResults = await Promise.all(
-                selectedFiles.map((file) => readImage(file)),
+                selectedFiles.map(async (file) => ({
+                    src: await readImage(file),
+                    name: file.name,
+                    file,
+                })),
             );
 
             setForm((previous) => ({
                 ...previous,
-                images: [...previous.images, ...imageResults].slice(
-                    0,
-                    MAX_IMAGES,
-                ),
-                imageNames: [
-                    ...previous.imageNames,
-                    ...selectedFiles.map((file) => file.name),
-                ].slice(0, MAX_IMAGES),
+                images: [...previous.images, ...imageResults].slice(0, MAX_IMAGES),
             }));
-        } catch {
-            alert('Ada gambar yang gagal dibaca. Silakan coba kembali.');
+        } catch (error: unknown) {
+            alert(
+                error instanceof Error
+                    ? error.message
+                    : 'Ada gambar yang gagal dibaca. Silakan coba kembali.',
+            );
         }
     }
 
@@ -435,13 +428,17 @@ export default function DataRuangan() {
             images: previous.images.filter(
                 (_, imageIndex) => imageIndex !== index,
             ),
-            imageNames: previous.imageNames.filter(
-                (_, imageIndex) => imageIndex !== index,
-            ),
         }));
     }
 
-    function saveRoom(event: React.FormEvent<HTMLFormElement>) {
+    async function loadRooms() {
+        const result = await managementRequest<{ rooms: Room[] }>(
+            '/api/admin/rooms',
+        );
+        setRooms(result.rooms);
+    }
+
+    async function saveRoom(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         if (!form.responsiblePerson.trim()) {
@@ -449,10 +446,36 @@ export default function DataRuangan() {
             return;
         }
 
+        if (!form.rfidCode.trim()) {
+            alert('Kode RFID ruangan wajib diisi.');
+            return;
+        }
+
+        const codeExists = rooms.some(
+            (room) =>
+                room.id !== editingId &&
+                room.code.toLowerCase() === form.code.trim().toLowerCase(),
+        );
+        if (codeExists) {
+            alert('Kode ruangan sudah digunakan. Gunakan kode yang berbeda.');
+            return;
+        }
+
+        const rfidCodeExists = rooms.some(
+            (room) =>
+                room.id !== editingId &&
+                room.rfidCode.toLowerCase() ===
+                    form.rfidCode.trim().toLowerCase(),
+        );
+        if (rfidCodeExists) {
+            alert('Kode RFID sudah terdaftar pada ruangan lain.');
+            return;
+        }
+
         const roomNumberExists = rooms.some(
             (room) =>
                 room.id !== editingId &&
-                room.locationId === Number(form.locationId) &&
+                room.locationId === form.locationId &&
                 room.roomNumber.trim().toLowerCase() ===
                     form.roomNumber.trim().toLowerCase(),
         );
@@ -462,56 +485,66 @@ export default function DataRuangan() {
             return;
         }
 
-        const payload: Room = {
-            id: editingId ?? Date.now(),
-            code: form.code.trim(),
-            name: form.name.trim(),
-            type: form.type,
-            locationId: Number(form.locationId),
-            floor: form.floor.trim(),
-            roomNumber: form.roomNumber.trim(),
-            capacity: Number(form.capacity || 0),
-            area: Number(form.area || 0),
-            responsiblePerson: form.responsiblePerson.trim(),
-            facilities: form.facilities
-                .split(',')
-                .map((facility) => facility.trim())
-                .filter(Boolean),
-            description: form.description.trim(),
-            images: [...form.images],
-            imageNames: [...form.imageNames],
-            createdAt:
-                editingId !== null
-                    ? rooms.find((room) => room.id === editingId)?.createdAt ??
-                      new Date().toISOString().slice(0, 10)
-                    : new Date().toISOString().slice(0, 10),
-        };
+        const data = new FormData();
+        data.set('code', form.code.trim());
+        data.set('name', form.name.trim());
+        data.set('type', form.type);
+        data.set('locationId', form.locationId);
+        data.set('floor', form.floor.trim());
+        data.set('roomNumber', form.roomNumber.trim());
+        data.set('rfidCode', form.rfidCode.trim());
+        data.set('capacity', form.capacity);
+        data.set('area', form.area);
+        data.set('responsiblePerson', form.responsiblePerson.trim());
+        data.set('facilities', form.facilities);
+        data.set('description', form.description.trim());
+        data.set(
+            'retainedImages',
+            JSON.stringify(
+                form.images
+                    .filter((image) => !image.file)
+                    .map((image) => image.src),
+            ),
+        );
+        form.images.forEach((image) => {
+            if (image.file) data.append('images', image.file);
+        });
 
-        if (editingId !== null) {
-            setRooms((previous) =>
-                previous.map((room) =>
-                    room.id === editingId ? payload : room,
-                ),
+        setSaving(true);
+        try {
+            await managementRequest<{ room: Room }>(
+                editingId
+                    ? `/api/admin/rooms/${editingId}`
+                    : '/api/admin/rooms',
+                {
+                    method: editingId ? 'PATCH' : 'POST',
+                    body: data,
+                },
             );
-        } else {
-            setRooms((previous) => [payload, ...previous]);
+            await loadRooms();
             setCurrentPage(1);
+            closeModal();
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+        } finally {
+            setSaving(false);
         }
-
-        setModalOpen(false);
-        setEditingId(null);
-        setForm(emptyForm);
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
         if (deleteId === null) return;
 
-        setRooms((previous) =>
-            previous.filter((room) => room.id !== deleteId),
-        );
-
-        setDeleteId(null);
-        setDetailRoom(null);
+        try {
+            await managementRequest<{ deleted: boolean }>(
+                `/api/admin/rooms/${deleteId}`,
+                { method: 'DELETE' },
+            );
+            await loadRooms();
+            setDeleteId(null);
+            setDetailRoom(null);
+        } catch (error: unknown) {
+            alert(managementErrorMessage(error));
+        }
     }
 
     function closeModal() {
@@ -566,6 +599,7 @@ export default function DataRuangan() {
                     <button
                         type="button"
                         onClick={openCreateModal}
+                        disabled={loading}
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
                     >
                         <Icon name="plus" size={17} />
@@ -610,7 +644,7 @@ export default function DataRuangan() {
                                         setSearch(event.target.value);
                                         setCurrentPage(1);
                                     }}
-                                    placeholder="Cari kode atau nama ruangan..."
+                                    placeholder="Cari kode, nama, RFID, atau nomor ruangan..."
                                     className={`${inputClass} pl-9 sm:w-64`}
                                 />
                             </div>
@@ -640,7 +674,7 @@ export default function DataRuangan() {
                                 className={inputClass}
                             >
                                 <option value="Semua">Semua Gedung</option>
-                                {masterLocations.map((location) => (
+                                {locations.map((location) => (
                                     <option
                                         key={location.id}
                                         value={location.id}
@@ -694,7 +728,6 @@ export default function DataRuangan() {
                                                         if (room.images[0]) {
                                                             setImagePreview({
                                                                 images: room.images,
-                                                                imageNames: room.imageNames,
                                                                 index: 0,
                                                                 entityName: room.name,
                                                             });
@@ -730,6 +763,9 @@ export default function DataRuangan() {
                                                         {' · '}
                                                         {room.images.length} foto
                                                     </p>
+                                                    <p className="mt-1 text-[10px] text-neutral-400">
+                                                        RFID: {room.rfidCode}
+                                                    </p>
                                                 </div>
                                             </div>
                                         </td>
@@ -758,6 +794,18 @@ export default function DataRuangan() {
 
                                         <td className="px-5 py-4">
                                             <div className="flex justify-end gap-1">
+                                                <button
+                                                    type="button"
+                                                    title="Duplikasi"
+                                                    aria-label={`Duplikasi ruangan ${room.name}`}
+                                                    onClick={() =>
+                                                        void duplicateRoom(room)
+                                                    }
+                                                    className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                                                >
+                                                    <Icon name="copy" size={16} />
+                                                </button>
+
                                                 <button
                                                     type="button"
                                                     title="Detail"
@@ -814,13 +862,16 @@ export default function DataRuangan() {
                                             />
 
                                             <p className="font-semibold text-neutral-700">
-                                                Ruangan tidak ditemukan
+                                                {loading
+                                                    ? 'Memuat data ruangan...'
+                                                    : 'Ruangan tidak ditemukan'}
                                             </p>
 
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                Ubah kata kunci atau filter
-                                                pencarian.
-                                            </p>
+                                            {!loading && (
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    Ubah kata kunci atau filter pencarian, atau tambahkan data ruangan.
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 )}
@@ -878,8 +929,8 @@ export default function DataRuangan() {
                 </section>
 
                 <p className="text-xs text-neutral-400">
-                    Data saat ini merupakan ilustrasi frontend dan belum
-                    tersimpan ke database.
+                    Data ruangan dan foto tersimpan di database FAMS. Setiap ruangan
+                    memiliki kode RFID unik untuk identifikasi perangkat ESP32.
                 </p>
             </div>
 
@@ -939,6 +990,7 @@ export default function DataRuangan() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: FAMS-RNG-001"
+                                            maxLength={40}
                                         />
                                     </Field>
 
@@ -954,6 +1006,7 @@ export default function DataRuangan() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: Laboratorium Komputer"
+                                            maxLength={255}
                                         />
                                     </Field>
 
@@ -981,6 +1034,7 @@ export default function DataRuangan() {
                                         <select
                                             required
                                             value={form.locationId}
+                                            disabled={locations.length === 0}
                                             onChange={(event) =>
                                                 updateForm(
                                                     'locationId',
@@ -990,10 +1044,12 @@ export default function DataRuangan() {
                                             className={inputClass}
                                         >
                                             <option value="">
-                                                Pilih gedung
+                                                {locations.length === 0
+                                                    ? 'Tambahkan lokasi terlebih dahulu'
+                                                    : 'Pilih gedung'}
                                             </option>
 
-                                            {masterLocations.map((location) => (
+                                            {locations.map((location) => (
                                                 <option
                                                     key={location.id}
                                                     value={location.id}
@@ -1016,6 +1072,7 @@ export default function DataRuangan() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: 2"
+                                            maxLength={50}
                                         />
                                     </Field>
 
@@ -1031,7 +1088,28 @@ export default function DataRuangan() {
                                             }
                                             className={inputClass}
                                             placeholder="Contoh: 201"
+                                            maxLength={40}
                                         />
+                                    </Field>
+
+                                    <Field label="Kode RFID (UID Tag)" required>
+                                        <input
+                                            required
+                                            value={form.rfidCode}
+                                            onChange={(event) =>
+                                                updateForm(
+                                                    'rfidCode',
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className={inputClass}
+                                            placeholder="Scan atau masukkan UID tag RFID"
+                                            maxLength={100}
+                                        />
+                                        <p className="text-[11px] text-neutral-400">
+                                            Kode ini harus sesuai dengan tag yang dipindai
+                                            ESP32 dan unik untuk setiap ruangan.
+                                        </p>
                                     </Field>
                                 </div>
                             </section>
@@ -1130,8 +1208,14 @@ export default function DataRuangan() {
                                                     type="button"
                                                     onClick={() =>
                                                         setImagePreview({
-                                                            images: form.images,
-                                                            imageNames: form.imageNames,
+                                                            images: form.images.map(
+                                                                (image) => image.src,
+                                                            ),
+                                                            imageNames:
+                                                                form.images.map(
+                                                                    (image) =>
+                                                                        image.name,
+                                                                ),
                                                             index: 0,
                                                             entityName: form.name || 'Ruangan',
                                                         })
@@ -1139,7 +1223,7 @@ export default function DataRuangan() {
                                                     className="h-full w-full cursor-zoom-in"
                                                 >
                                                     <img
-                                                        src={form.images[0]}
+                                                        src={form.images[0].src}
                                                         alt="Preview ruangan"
                                                         className="h-full w-full object-cover"
                                                     />
@@ -1192,7 +1276,6 @@ export default function DataRuangan() {
                                                             setForm((previous) => ({
                                                                 ...previous,
                                                                 images: [],
-                                                                imageNames: [],
                                                             }))
                                                         }
                                                         className="text-xs font-medium text-neutral-500 transition hover:text-neutral-950"
@@ -1216,7 +1299,7 @@ export default function DataRuangan() {
                                             />
 
                                             <p className="mt-2 text-[10px] text-neutral-400">
-                                                Format JPG, PNG, atau WEBP.
+                                                Format JPG, PNG, atau WEBP, maksimal 5 MB per foto.
                                             </p>
                                         </div>
                                     </div>
@@ -1226,15 +1309,21 @@ export default function DataRuangan() {
                                     <div className="flex flex-wrap gap-3">
                                         {form.images.map((image, index) => (
                                             <div
-                                                key={`${image.slice(0, 30)}-${index}`}
+                                                key={`${image.name}-${index}`}
                                                 className="group relative h-16 w-16 overflow-hidden rounded-lg border border-neutral-200 bg-white"
                                             >
                                                 <button
                                                     type="button"
                                                     onClick={() =>
                                                         setImagePreview({
-                                                            images: form.images,
-                                                            imageNames: form.imageNames,
+                                                            images: form.images.map(
+                                                                (item) => item.src,
+                                                            ),
+                                                            imageNames:
+                                                                form.images.map(
+                                                                    (item) =>
+                                                                        item.name,
+                                                                ),
                                                             index,
                                                             entityName: form.name || 'Ruangan',
                                                         })
@@ -1242,7 +1331,7 @@ export default function DataRuangan() {
                                                     className="h-full w-full cursor-zoom-in"
                                                 >
                                                     <img
-                                                        src={image}
+                                                        src={image.src}
                                                         alt={`Foto ruangan ${index + 1}`}
                                                         className="h-full w-full object-cover"
                                                     />
@@ -1298,9 +1387,12 @@ export default function DataRuangan() {
 
                             <button
                                 type="submit"
-                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800"
+                                disabled={saving}
+                                className="rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-60"
                             >
-                                {editingId !== null
+                                {saving
+                                    ? 'Menyimpan...'
+                                    : editingId !== null
                                     ? 'Simpan Perubahan'
                                     : 'Simpan Ruangan'}
                             </button>
@@ -1356,7 +1448,6 @@ export default function DataRuangan() {
                                                 onClick={() =>
                                                     setImagePreview({
                                                         images: detailRoom.images,
-                                                        imageNames: detailRoom.imageNames,
                                                         index,
                                                         entityName: detailRoom.name,
                                                     })
@@ -1406,6 +1497,7 @@ export default function DataRuangan() {
                                         'Nomor Ruangan',
                                         detailRoom.roomNumber,
                                     ],
+                                    ['Kode RFID', detailRoom.rfidCode],
                                     [
                                         'Kapasitas',
                                         `${detailRoom.capacity} orang`,

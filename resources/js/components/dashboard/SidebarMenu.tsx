@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import { Link, usePage } from '@/lib/next-compat';
 import Icon from '../Icon';
 import type { DashboardMenuItem } from '../../types/dashboard';
 
