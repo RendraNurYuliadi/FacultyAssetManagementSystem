@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import {
     displayAsset,
+    ensureAssetDataModel,
     findAssetSource,
     parseAssetForm,
     type AssetDocument,
 } from '@/lib/server/assets';
 import { reportManagementError, requireAdmin } from '@/lib/server/management';
 import { getDb } from '@/lib/server/db';
+import { getLocationDisplay } from '@/lib/server/locations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +44,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         const input = parsed.value;
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const assets = db.collection<AssetDocument>('assets');
         const assetId = new ObjectId(id);
         const existing = await assets.findOne({ _id: assetId });
@@ -63,11 +66,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         if (!ObjectId.isValid(source.locationId)) {
             return errorResponse('Lokasi sumber aset tidak valid.', 409);
         }
-        const locationExists = await db.collection('locations').findOne(
-            { _id: new ObjectId(source.locationId) },
-            { projection: { _id: 1 } },
-        );
-        if (!locationExists) {
+        const location = await getLocationDisplay(db, source.locationId);
+        if (!location) {
             return errorResponse('Lokasi sumber aset tidak ditemukan.', 409);
         }
 
@@ -98,7 +98,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         );
         const saved = await assets.findOne({ _id: assetId });
         return NextResponse.json({
-            asset: saved ? displayAsset(saved, source) : null,
+            asset: saved ? displayAsset(saved, source, location) : null,
         });
     } catch (error) {
         if (isDuplicateKey(error)) {
@@ -118,8 +118,15 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
             return errorResponse('ID aset tidak valid.', 400);
         }
 
-        const assets = (await getDb()).collection<AssetDocument>('assets');
-        const result = await assets.deleteOne({ _id: new ObjectId(id) });
+        const db = await getDb();
+        await ensureAssetDataModel(db);
+        const assets = db.collection<AssetDocument>('assets');
+        const assetId = new ObjectId(id);
+        const existing = await assets.findOne({ _id: assetId });
+        if (!existing) {
+            return errorResponse('Aset tidak ditemukan.', 404);
+        }
+        const result = await assets.deleteOne({ _id: assetId });
         if (result.deletedCount === 0) {
             return errorResponse('Aset tidak ditemukan.', 404);
         }

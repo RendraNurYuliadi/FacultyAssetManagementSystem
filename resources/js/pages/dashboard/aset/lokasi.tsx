@@ -5,6 +5,7 @@ import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
 import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';
+import ClearManagementDataButton from '../../../components/dashboard/ClearManagementDataButton';
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
@@ -28,6 +29,8 @@ type Location = {
     phone: string;
     description: string;
     images: string[];
+    createdAt: string;
+    updatedAt: string;
 };
 
 type LocationFormImage = {
@@ -503,14 +506,22 @@ export default function DataLokasi() {
                         </p>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={openCreateModal}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
-                    >
-                        <Icon name="plus" size={17} />
-                        Tambah Lokasi
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <ClearManagementDataButton
+                            endpoint="/api/admin/locations/clear"
+                            dataLabel="lokasi"
+                            warning="Lokasi yang masih digunakan oleh barang, ruangan, atau aset tidak dapat dihapus."
+                            onCleared={() => setLocations([])}
+                        />
+                        <button
+                            type="button"
+                            onClick={openCreateModal}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                        >
+                            <Icon name="plus" size={17} />
+                            Tambah Lokasi
+                        </button>
+                    </div>
                 </div>
 
                 {/* STATISTICS */}
@@ -573,7 +584,7 @@ export default function DataLokasi() {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[850px] text-left text-sm">
+                        <table className="w-full min-w-[1650px] text-left text-sm">
                             <thead className="bg-neutral-50 text-xs text-neutral-500">
                                 <tr>
                                     <th className="px-5 py-4 font-semibold">
@@ -592,7 +603,19 @@ export default function DataLokasi() {
                                         Penanggung Jawab
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
+                                        Telepon
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Deskripsi
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
                                         Foto
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Dibuat
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Diperbarui
                                     </th>
                                     <th className="px-5 py-4 text-right font-semibold">
                                         Aksi
@@ -644,6 +667,9 @@ export default function DataLokasi() {
                                                     <p className="mt-1 text-xs text-neutral-400">
                                                         {location.code}
                                                     </p>
+                                                    <p className="mt-1 text-[10px] text-neutral-400">
+                                                        ID: {location.id}
+                                                    </p>
                                                 </div>
                                             </div>
                                         </td>
@@ -658,19 +684,48 @@ export default function DataLokasi() {
                                             {location.area || '-'}
                                         </td>
 
-                                        <td className="max-w-56 px-5 py-4 text-xs leading-5 text-neutral-600">
-                                            {location.address}
+                                        <td className="max-w-[280px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            {location.address || '-'}
                                         </td>
 
                                         <td className="px-5 py-4 text-xs text-neutral-600">
                                             {location.responsible || '-'}
                                         </td>
 
+                                        <td className="px-5 py-4 text-xs text-neutral-600">
+                                            {location.phone || '-'}
+                                        </td>
+
+                                        <td className="max-w-[260px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            {location.description || '-'}
+                                        </td>
+
                                         <td className="px-5 py-4">
-                                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-100 px-2.5 py-1.5 text-xs font-medium text-neutral-600">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (location.images.length) {
+                                                        setImagePreview({
+                                                            images: location.images,
+                                                            index: 0,
+                                                            entityName: location.name,
+                                                        });
+                                                    }
+                                                }}
+                                                disabled={!location.images.length}
+                                                className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-100 px-2.5 py-1.5 text-xs font-medium text-neutral-600 disabled:cursor-default"
+                                            >
                                                 <Icon name="image" size={13} />
                                                 {location.images.length}
-                                            </span>
+                                            </button>
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {location.createdAt || '-'}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {location.updatedAt || '-'}
                                         </td>
 
                                         <td className="px-5 py-4">
@@ -729,7 +784,7 @@ export default function DataLokasi() {
                                 {paginatedLocations.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan={7}
+                                            colSpan={11}
                                             className="px-5 py-14 text-center"
                                         >
                                             <Icon

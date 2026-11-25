@@ -121,6 +121,12 @@ function readRetainedImages(
 }
 
 function displayLocation(location: LocationDocument) {
+    const dateOnly = (value: Date | string | undefined) => {
+        if (value instanceof Date) return value.toISOString().slice(0, 10);
+        if (typeof value === 'string') return value.slice(0, 10);
+        return '';
+    };
+
     return {
         id: location._id.toString(),
         code: location.code,
@@ -140,6 +146,8 @@ function displayLocation(location: LocationDocument) {
                       ),
               )
             : [],
+        createdAt: dateOnly(location.createdAt),
+        updatedAt: dateOnly(location.updatedAt),
     };
 }
 

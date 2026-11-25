@@ -5,6 +5,7 @@ import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
 import Pagination from '../../../components/Pagination';
 import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';
+import ClearManagementDataButton from '../../../components/dashboard/ClearManagementDataButton';
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
@@ -15,7 +16,13 @@ import {
 
 type AssetCategory = 'Barang' | 'Ruangan';
 type AssetCondition = 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
-type AssetStatus = 'Tersedia' | 'Dipinjam' | 'Maintenance' | 'Tidak Aktif';
+type AssetStatus =
+    | 'Tersedia'
+    | 'Diproses Peminjam'
+    | 'Dipinjam'
+    | 'Diproses Pengembalian'
+    | 'Maintenance'
+    | 'Tidak Aktif';
 
 type ItemSource = {
     kind: 'Barang';
@@ -115,8 +122,12 @@ const getStatusStyle = (status: AssetStatus) => {
     switch (status) {
         case 'Tersedia':
             return 'bg-neutral-100 text-neutral-800 border-neutral-200';
+        case 'Diproses Peminjam':
+            return 'bg-amber-50 text-amber-800 border-amber-200';
         case 'Dipinjam':
             return 'bg-neutral-900 text-white border-neutral-800';
+        case 'Diproses Pengembalian':
+            return 'bg-blue-50 text-blue-800 border-blue-200';
         case 'Maintenance':
             return 'bg-neutral-200 text-neutral-800 border-neutral-300';
         case 'Tidak Aktif':
@@ -339,9 +350,17 @@ export default function KatalogAset() {
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-600">
-                        <span className="h-2 w-2 rounded-full bg-neutral-800" />
-                        <span>{assets.length} aset terdaftar</span>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <ClearManagementDataButton
+                            endpoint="/api/admin/assets/clear"
+                            dataLabel="aset"
+                            warning="Data aset juga tampil di menu Data Aset. Pembersihan di sini akan mengosongkan keduanya."
+                            onCleared={() => setAssets([])}
+                        />
+                        <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-600">
+                            <span className="h-2 w-2 rounded-full bg-neutral-800" />
+                            <span>{assets.length} aset terdaftar</span>
+                        </div>
                     </div>
                 </div>
 
@@ -403,9 +422,15 @@ export default function KatalogAset() {
                             }}
                             className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700 outline-none focus:border-neutral-500"
                         >
-                            <option value="Semua">Semua Status</option>
+                            <option value="Semua">Semua Status Ketersediaan</option>
                             <option value="Tersedia">Tersedia</option>
+                            <option value="Diproses Peminjam">
+                                Diproses Peminjam
+                            </option>
                             <option value="Dipinjam">Dipinjam</option>
+                            <option value="Diproses Pengembalian">
+                                Diproses Pengembalian
+                            </option>
                             <option value="Maintenance">Maintenance</option>
                             <option value="Tidak Aktif">Tidak Aktif</option>
                         </select>

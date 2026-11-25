@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import {
     displayAsset,
+    ensureAssetDataModel,
     findAssetSource,
     listAssetDisplays,
     parseAssetForm,
@@ -12,6 +13,7 @@ import {
     requireAdmin,
 } from '@/lib/server/management';
 import { getDb } from '@/lib/server/db';
+import { getLocationDisplay } from '@/lib/server/locations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,6 +37,7 @@ export async function GET() {
         if (access.response) return access.response;
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const assets = await db
             .collection<AssetDocument>('assets')
             .find({})
@@ -59,6 +62,7 @@ export async function POST(request: Request) {
         const input = parsed.value;
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const assets = db.collection<AssetDocument>('assets');
         if (await assets.findOne({ code: input.code })) {
             return errorResponse('Kode aset sudah digunakan.', 409);
@@ -71,11 +75,8 @@ export async function POST(request: Request) {
         if (!ObjectId.isValid(source.locationId)) {
             return errorResponse('Lokasi sumber aset tidak valid.', 409);
         }
-        const locationExists = await db.collection('locations').findOne(
-            { _id: new ObjectId(source.locationId) },
-            { projection: { _id: 1 } },
-        );
-        if (!locationExists) {
+        const location = await getLocationDisplay(db, source.locationId);
+        if (!location) {
             return errorResponse('Lokasi sumber aset tidak ditemukan.', 409);
         }
 
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
             {
                 asset: created
-                    ? displayAsset(created, source)
+                    ? displayAsset(created, source, location)
                     : null,
             },
             { status: 201 },

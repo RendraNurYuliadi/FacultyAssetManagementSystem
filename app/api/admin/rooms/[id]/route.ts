@@ -7,7 +7,13 @@ import {
     requireAdmin,
     storeManagementImage,
 } from '@/lib/server/management';
+import { ensureAssetDataModel } from '@/lib/server/assets';
 import { getDb } from '@/lib/server/db';
+import {
+    displayLocation,
+    type LocationDisplay,
+    type LocationDocument,
+} from '@/lib/server/locations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -157,20 +163,23 @@ function readRetainedImages(
     return [...new Set(parsed as string[])];
 }
 
-function displayRoom(room: RoomDocument) {
-    const createdAt =
-        room.createdAt instanceof Date
-            ? room.createdAt.toISOString().slice(0, 10)
-            : typeof room.createdAt === 'string'
-              ? room.createdAt.slice(0, 10)
-              : '';
+function dateOnly(value: Date | string | undefined) {
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (typeof value === 'string') return value.slice(0, 10);
+    return '';
+}
 
+function displayRoom(
+    room: RoomDocument,
+    location: LocationDisplay | null,
+) {
     return {
         id: room._id.toString(),
         code: room.code,
         name: room.name,
         type: room.type,
         locationId: room.locationId,
+        location,
         floor: room.floor,
         roomNumber: room.roomNumber,
         rfidCode: room.rfidCode,
@@ -188,7 +197,8 @@ function displayRoom(room: RoomDocument) {
                       ),
               )
             : [],
-        createdAt,
+        createdAt: dateOnly(room.createdAt),
+        updatedAt: dateOnly(room.updatedAt),
     };
 }
 
@@ -219,17 +229,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         if (!files) return errorResponse('File foto ruangan tidak valid.');
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const roomId = new ObjectId(id);
         const rooms = db.collection<RoomDocument>('rooms');
         const existing = await rooms.findOne({ _id: roomId });
         if (!existing) return errorResponse('Ruangan tidak ditemukan.', 404);
 
         const locationExists = await db
-            .collection('locations')
-            .findOne(
-                { _id: new ObjectId(room.locationId) },
-                { projection: { _id: 1 } },
-            );
+            .collection<LocationDocument>('locations')
+            .findOne({ _id: new ObjectId(room.locationId) });
         if (!locationExists) {
             return errorResponse('Gedung atau lokasi tidak ditemukan.', 404);
         }
@@ -294,7 +302,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
         const saved = await rooms.findOne({ _id: roomId });
         return NextResponse.json({
-            room: saved ? displayRoom(saved) : null,
+            room: saved
+                ? displayRoom(saved, displayLocation(locationExists))
+                : null,
         });
     } catch (error) {
         if (!imagesPersisted) {
@@ -323,6 +333,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
         }
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const rooms = db.collection<RoomDocument>('rooms');
         const roomId = new ObjectId(id);
         const existing = await rooms.findOne({ _id: roomId });

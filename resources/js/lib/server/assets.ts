@@ -1,9 +1,19 @@
 import 'server-only';
 import { ObjectId, type Db } from 'mongodb';
+import {
+    getLocationDisplays,
+    type LocationDisplay,
+} from '@/lib/server/locations';
 
 export type AssetCategory = 'Barang' | 'Ruangan';
 export type AssetCondition = 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
-export type AssetStatus = 'Tersedia' | 'Dipinjam' | 'Maintenance' | 'Tidak Aktif';
+export type AssetStatus =
+    | 'Tersedia'
+    | 'Diproses Peminjam'
+    | 'Dipinjam'
+    | 'Diproses Pengembalian'
+    | 'Maintenance'
+    | 'Tidak Aktif';
 
 export type AssetInput = {
     code: string;
@@ -41,20 +51,71 @@ export type AssetDocument = {
 
 export type AssetSourceDocument = {
     _id: ObjectId;
+    code?: string;
     name: string;
     locationId: string;
     rfidCode: string;
     images: string[];
+    category?: string;
+    type?: string;
+    brand?: string;
+    model?: string;
+    specification?: string;
+    unit?: string;
+    responsiblePerson?: string;
+    description?: string;
+    status?: string;
+    floor?: string;
+    roomNumber?: string;
+    capacity?: number;
+    area?: number;
+    facilities?: string[];
+    createdAt?: Date | string;
+    updatedAt?: Date | string;
 };
 
 const categories: AssetCategory[] = ['Barang', 'Ruangan'];
 const conditions: AssetCondition[] = ['Baik', 'Rusak Ringan', 'Rusak Berat'];
 const statuses: AssetStatus[] = [
     'Tersedia',
+    'Diproses Peminjam',
     'Dipinjam',
+    'Diproses Pengembalian',
     'Maintenance',
     'Tidak Aktif',
 ];
+let assetDataModelMigration: Promise<void> | null = null;
+
+export async function ensureAssetDataModel(db: Db) {
+    if (!assetDataModelMigration) {
+        assetDataModelMigration = Promise.all([
+            db.collection('assets').updateMany(
+                { status: 'Diajukan Peminjam' },
+                {
+                    $set: {
+                        status: 'Diproses Peminjam',
+                        updatedAt: new Date(),
+                    },
+                },
+            ),
+            db.collection('items').updateMany(
+                { availabilityStatus: { $exists: true } },
+                { $unset: { availabilityStatus: '' } },
+            ),
+            db.collection('rooms').updateMany(
+                { availabilityStatus: { $exists: true } },
+                { $unset: { availabilityStatus: '' } },
+            ),
+        ])
+            .then(() => undefined)
+            .catch((error: unknown) => {
+                assetDataModelMigration = null;
+                throw error;
+            });
+    }
+
+    await assetDataModelMigration;
+}
 
 function readText(form: FormData, key: string) {
     const value = form.get(key);
@@ -66,6 +127,13 @@ function isOneOf<T extends string>(
     choices: T[],
 ): value is T {
     return choices.includes(value as T);
+}
+
+export function isAssetStatus(value: unknown): value is AssetStatus {
+    return (
+        typeof value === 'string' &&
+        statuses.some((status) => status === value)
+    );
 }
 
 export function parseAssetForm(form: FormData):
@@ -93,8 +161,11 @@ export function parseAssetForm(form: FormData):
     if (!isOneOf(conditionValue, conditions)) {
         return { ok: false, error: 'Kondisi aset tidak valid.' };
     }
-    if (!isOneOf(statusValue, statuses)) {
-        return { ok: false, error: 'Status aset tidak valid.' };
+    if (!isAssetStatus(statusValue)) {
+        return {
+            ok: false,
+            error: 'Status ketersediaan aset tidak valid.',
+        };
     }
     if (
         (categoryValue === 'Barang' && (!itemId || roomId)) ||
@@ -180,6 +251,7 @@ function dateOnly(value: Date | string | undefined) {
 export function displayAsset(
     asset: AssetDocument,
     source: AssetSourceDocument | null,
+    location: LocationDisplay | null,
 ) {
     return {
         id: asset._id.toString(),
@@ -189,7 +261,35 @@ export function displayAsset(
         itemId: asset.itemId ?? '',
         roomId: asset.roomId ?? '',
         locationId: source?.locationId ?? asset.locationId ?? '',
+        location,
         rfidCode: source?.rfidCode ?? '',
+        source: source
+            ? {
+                  id: source._id.toString(),
+                  category: asset.category,
+                  locationId: source.locationId ?? '',
+                  code: source.code ?? '',
+                  name: source.name ?? '',
+                  kind: source.category ?? source.type ?? '',
+                  brand: source.brand ?? '',
+                  model: source.model ?? '',
+                  specification: source.specification ?? '',
+                  unit: source.unit ?? '',
+                  floor: source.floor ?? '',
+                  roomNumber: source.roomNumber ?? '',
+                  capacity: source.capacity ?? 0,
+                  area: source.area ?? 0,
+                  responsiblePerson: source.responsiblePerson ?? '',
+                  facilities: Array.isArray(source.facilities)
+                      ? source.facilities
+                      : [],
+                  status: source.status ?? '',
+                  description: source.description ?? '',
+                  images: safeImages(source.images, asset.category),
+                  createdAt: dateOnly(source.createdAt),
+                  updatedAt: dateOnly(source.updatedAt),
+              }
+            : null,
         quantity: asset.category === 'Ruangan' ? 1 : asset.quantity,
         condition: asset.condition,
         status: asset.status,
@@ -199,6 +299,7 @@ export function displayAsset(
         description: asset.description ?? '',
         images: safeImages(source?.images, asset.category),
         createdAt: dateOnly(asset.createdAt),
+        updatedAt: dateOnly(asset.updatedAt),
     };
 }
 
@@ -230,15 +331,23 @@ export async function listAssetDisplays(db: Db, assets: AssetDocument[]) {
     const sources = new Map(
         [...items, ...rooms].map((source) => [source._id.toString(), source]),
     );
+    const sourceList = [...items, ...rooms];
+    const locations = await getLocationDisplays(
+        db,
+        sourceList.map((source) => source.locationId),
+    );
 
-    return assets.map((asset) =>
-        displayAsset(
-            asset,
+    return assets.map((asset) => {
+        const source =
             sources.get(
                 asset.category === 'Barang'
                     ? asset.itemId ?? ''
                     : asset.roomId ?? '',
-            ) ?? null,
-        ),
-    );
+            ) ?? null;
+        return displayAsset(
+            asset,
+            source,
+            source ? locations.get(source.locationId) ?? null : null,
+        );
+    });
 }

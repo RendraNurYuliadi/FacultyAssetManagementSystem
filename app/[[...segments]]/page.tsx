@@ -13,7 +13,6 @@ const dashboardPaths = [
     '/dashboard/aset/ruangan',
     '/dashboard/aset/lokasi',
     '/dashboard/peminjaman',
-    '/dashboard/peminjaman/pengajuan',
     '/dashboard/peminjaman/persetujuan',
     '/dashboard/pengembalian',
     '/dashboard/pengembalian/pemeriksaan',
@@ -55,6 +54,9 @@ export default async function Page({ params, searchParams }: Props) {
         searchParams,
     ]);
     const pathname = segments.length ? `/${segments.join('/')}` : '/';
+    if (pathname === '/dashboard/peminjaman/pengajuan') {
+        redirect('/dashboard/peminjaman');
+    }
     if (!publicPaths.includes(pathname) && !dashboardPaths.includes(pathname)) {
         notFound();
     }
@@ -65,6 +67,12 @@ export default async function Page({ params, searchParams }: Props) {
         if (
             user.role === 'pengelola' &&
             pathname.startsWith('/dashboard/pengguna')
+        ) {
+            notFound();
+        }
+        if (
+            user.role === 'peminjam' &&
+            pathname === '/dashboard/peminjaman/persetujuan'
         ) {
             notFound();
         }

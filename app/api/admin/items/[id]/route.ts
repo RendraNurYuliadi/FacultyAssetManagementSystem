@@ -7,7 +7,13 @@ import {
     requireAdmin,
     storeManagementImage,
 } from '@/lib/server/management';
+import { ensureAssetDataModel } from '@/lib/server/assets';
 import { getDb } from '@/lib/server/db';
+import {
+    displayLocation,
+    type LocationDisplay,
+    type LocationDocument,
+} from '@/lib/server/locations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -156,14 +162,16 @@ function readRetainedImages(
     return [...new Set(parsed as string[])];
 }
 
-function displayItem(item: ItemDocument) {
-    const createdAt =
-        item.createdAt instanceof Date
-            ? item.createdAt.toISOString().slice(0, 10)
-            : typeof item.createdAt === 'string'
-              ? item.createdAt.slice(0, 10)
-              : '';
+function dateOnly(value: Date | string | undefined) {
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (typeof value === 'string') return value.slice(0, 10);
+    return '';
+}
 
+function displayItem(
+    item: ItemDocument,
+    location: LocationDisplay | null,
+) {
     return {
         id: item._id.toString(),
         code: item.code,
@@ -175,6 +183,7 @@ function displayItem(item: ItemDocument) {
         unit: item.unit,
         locationId:
             typeof item.locationId === 'string' ? item.locationId : '',
+        location,
         responsiblePerson: item.responsiblePerson,
         description: item.description,
         status: item.status,
@@ -188,7 +197,8 @@ function displayItem(item: ItemDocument) {
                       ),
               )
             : [],
-        createdAt,
+        createdAt: dateOnly(item.createdAt),
+        updatedAt: dateOnly(item.updatedAt),
     };
 }
 
@@ -223,15 +233,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         if (!files) return errorResponse('File foto barang tidak valid.');
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const itemId = new ObjectId(id);
         const items = db.collection<ItemDocument>('items');
         const existing = await items.findOne({ _id: itemId });
         if (!existing) return errorResponse('Barang tidak ditemukan.', 404);
 
-        const locationExists = await db.collection('locations').findOne(
-            { _id: new ObjectId(item.locationId) },
-            { projection: { _id: 1 } },
-        );
+        const locationExists = await db
+            .collection<LocationDocument>('locations')
+            .findOne({ _id: new ObjectId(item.locationId) });
         if (!locationExists) {
             return errorResponse('Lokasi barang tidak ditemukan.', 404);
         }
@@ -288,7 +298,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
         const saved = await items.findOne({ _id: itemId });
         return NextResponse.json({
-            item: saved ? displayItem(saved) : null,
+            item: saved
+                ? displayItem(saved, displayLocation(locationExists))
+                : null,
         });
     } catch (error) {
         if (!imagesPersisted) {
@@ -314,6 +326,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
         }
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const items = db.collection<ItemDocument>('items');
         const itemId = new ObjectId(id);
         const existing = await items.findOne({ _id: itemId });

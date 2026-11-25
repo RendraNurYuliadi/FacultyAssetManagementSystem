@@ -5,6 +5,7 @@ import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
 import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';
+import ClearManagementDataButton from '../../../components/dashboard/ClearManagementDataButton';
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
@@ -17,6 +18,21 @@ import { copyStoredImage } from '../../../lib/image-file';
 
 type ItemStatus = 'Aktif' | 'Tidak Aktif';
 
+type LocationSnapshot = {
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+    address: string;
+    area: string;
+    responsible: string;
+    phone: string;
+    description: string;
+    images: string[];
+    createdAt: string;
+    updatedAt: string;
+};
+
 type Item = {
     id: string;
     code: string;
@@ -27,12 +43,14 @@ type Item = {
     specification: string;
     unit: string;
     locationId: string;
+    location: LocationSnapshot | null;
     responsiblePerson: string;
     description: string;
     status: ItemStatus;
     rfidCode: string;
     images: string[];
     createdAt: string;
+    updatedAt: string;
 };
 
 type ItemFormImage = {
@@ -610,15 +628,23 @@ export default function DataBarang() {
                         </p>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={openCreateModal}
-                        disabled={loading}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
-                    >
-                        <Icon name="plus" size={17} />
-                        Tambah Barang
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <ClearManagementDataButton
+                            endpoint="/api/admin/items/clear"
+                            dataLabel="barang"
+                            warning="Data barang yang masih dipakai oleh aset tidak dapat dihapus. Bersihkan aset terkait terlebih dahulu."
+                            onCleared={() => setItems([])}
+                        />
+                        <button
+                            type="button"
+                            onClick={openCreateModal}
+                            disabled={loading}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                        >
+                            <Icon name="plus" size={17} />
+                            Tambah Barang
+                        </button>
+                    </div>
                 </div>
 
                 {/* STATISTICS */}
@@ -711,16 +737,23 @@ export default function DataBarang() {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1000px] text-left text-sm">
+                        <table className="w-full min-w-[2600px] text-left text-sm">
                             <thead className="bg-neutral-50 text-xs text-neutral-500">
                                 <tr>
                                     <th className="px-5 py-4 font-semibold">Foto / Barang</th>
                                     <th className="px-5 py-4 font-semibold">Kode</th>
                                     <th className="px-5 py-4 font-semibold">Kategori</th>
-                                    <th className="px-5 py-4 font-semibold">Lokasi</th>
-                                    <th className="px-5 py-4 font-semibold">Merek / Model</th>
+                                    <th className="px-5 py-4 font-semibold">Lokasi Lengkap</th>
+                                    <th className="px-5 py-4 font-semibold">Merek</th>
+                                    <th className="px-5 py-4 font-semibold">Model</th>
+                                    <th className="px-5 py-4 font-semibold">Spesifikasi</th>
                                     <th className="px-5 py-4 font-semibold">Satuan</th>
+                                    <th className="px-5 py-4 font-semibold">Penanggung Jawab</th>
+                                    <th className="px-5 py-4 font-semibold">Deskripsi</th>
                                     <th className="px-5 py-4 font-semibold">Status</th>
+                                    <th className="px-5 py-4 font-semibold">Kode RFID</th>
+                                    <th className="px-5 py-4 font-semibold">Dibuat</th>
+                                    <th className="px-5 py-4 font-semibold">Diperbarui</th>
                                     <th className="px-5 py-4 text-right font-semibold">Aksi</th>
                                 </tr>
                             </thead>
@@ -766,11 +799,11 @@ export default function DataBarang() {
                                                     <p className="font-semibold text-neutral-900">
                                                         {item.name}
                                                     </p>
+                                                    <p className="mt-1 text-[10px] text-neutral-400">
+                                                        ID: {item.id}
+                                                    </p>
                                                     <p className="mt-1 text-xs text-neutral-400">
                                                         {item.images.length} foto
-                                                    </p>
-                                                    <p className="mt-1 text-[10px] text-neutral-400">
-                                                        RFID: {item.rfidCode}
                                                     </p>
                                                 </div>
                                             </div>
@@ -786,27 +819,77 @@ export default function DataBarang() {
                                             </span>
                                         </td>
 
-                                        <td className="px-5 py-4 text-xs text-neutral-600">
-                                            {getLocationName(item.locationId)}
+                                        <td className="max-w-[360px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            <div className="space-y-1">
+                                                <p className="font-semibold text-neutral-800">
+                                                    {item.location?.code || '-'} · {item.location?.name || getLocationName(item.locationId)}
+                                                </p>
+                                                <p>ID: {item.locationId || '-'}</p>
+                                                <p>Jenis: {item.location?.type || '-'} · Area: {item.location?.area || '-'}</p>
+                                                <p>Alamat: {item.location?.address || '-'}</p>
+                                                <p>Penanggung jawab: {item.location?.responsible || '-'} · Telepon: {item.location?.phone || '-'}</p>
+                                                <p>Deskripsi: {item.location?.description || '-'}</p>
+                                                <p>Dibuat: {item.location?.createdAt || '-'} · Diperbarui: {item.location?.updatedAt || '-'}</p>
+                                                <button
+                                                    type="button"
+                                                    disabled={!item.location?.images.length}
+                                                    onClick={() => {
+                                                        if (item.location?.images.length) {
+                                                            setImagePreview({
+                                                                images: item.location.images,
+                                                                index: 0,
+                                                                entityName: item.location.name,
+                                                            });
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1 rounded-lg bg-neutral-100 px-2 py-1 text-[11px] font-medium text-neutral-600 disabled:cursor-default"
+                                                >
+                                                    <Icon name="image" size={12} />
+                                                    {item.location?.images.length ?? 0} foto lokasi
+                                                </button>
+                                            </div>
                                         </td>
 
-                                        <td className="px-5 py-4">
-                                            <p className="text-xs font-medium text-neutral-700">
-                                                {item.brand || '-'}
-                                            </p>
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                {item.model || '-'}
-                                            </p>
+                                        <td className="whitespace-pre-wrap px-5 py-4 text-xs text-neutral-600">
+                                            {item.brand || '-'}
+                                        </td>
+
+                                        <td className="whitespace-pre-wrap px-5 py-4 text-xs text-neutral-600">
+                                            {item.model || '-'}
+                                        </td>
+
+                                        <td className="max-w-[280px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            {item.specification || '-'}
                                         </td>
 
                                         <td className="px-5 py-4 text-xs text-neutral-600">
                                             {item.unit}
                                         </td>
 
+                                        <td className="whitespace-pre-wrap px-5 py-4 text-xs text-neutral-600">
+                                            {item.responsiblePerson || '-'}
+                                        </td>
+
+                                        <td className="max-w-[260px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            {item.description || '-'}
+                                        </td>
+
                                         <td className="px-5 py-4">
                                             <span className={`inline-flex rounded-lg px-2.5 py-1.5 text-xs font-medium ${statusStyles[item.status]}`}>
                                                 {item.status}
                                             </span>
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {item.rfidCode || '-'}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {formatDate(item.createdAt)}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {formatDate(item.updatedAt)}
                                         </td>
 
                                         <td className="px-5 py-4">
@@ -854,7 +937,7 @@ export default function DataBarang() {
 
                                 {paginatedItems.length === 0 && (
                                     <tr>
-                                        <td colSpan={8} className="px-5 py-14 text-center">
+                                        <td colSpan={15} className="px-5 py-14 text-center">
                                             <Icon
                                                 name="package"
                                                 size={30}

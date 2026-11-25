@@ -165,6 +165,7 @@ export async function GET() {
                 const display = displayAsset(
                     asset,
                     source,
+                    null,
                 );
 
                 return {

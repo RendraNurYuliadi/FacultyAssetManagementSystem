@@ -36,11 +36,15 @@ export default function Sidebar({
                                 '/dashboard/peminjaman',
                                 '/dashboard/pengembalian',
                                 '/dashboard/pengaduan',
-                            ].some(
-                                (section) =>
+                            ].some((section) => {
+                                if (section === '/dashboard/peminjaman') {
+                                    return href === section;
+                                }
+                                return (
                                     href === section ||
-                                    href.startsWith(`${section}/`),
-                            ),
+                                    href.startsWith(`${section}/`)
+                                );
+                            }),
                         );
 
                         return children?.length ? { ...item, children } : null;

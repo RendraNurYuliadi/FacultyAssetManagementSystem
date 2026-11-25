@@ -5,6 +5,7 @@ import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
 import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';
+import ClearManagementDataButton from '../../../components/dashboard/ClearManagementDataButton';
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
@@ -16,7 +17,52 @@ import { nextNumberedUniqueValue } from '../../../lib/duplicate';
 
 type AssetCategory = 'Barang' | 'Ruangan';
 type AssetCondition = 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
-type AssetStatus = 'Tersedia' | 'Dipinjam' | 'Maintenance' | 'Tidak Aktif';
+type AssetStatus =
+    | 'Tersedia'
+    | 'Diproses Peminjam'
+    | 'Dipinjam'
+    | 'Diproses Pengembalian'
+    | 'Maintenance'
+    | 'Tidak Aktif';
+
+type LocationSnapshot = {
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+    address: string;
+    area: string;
+    responsible: string;
+    phone: string;
+    description: string;
+    images: string[];
+    createdAt: string;
+    updatedAt: string;
+};
+
+type AssetSource = {
+    id: string;
+    category: AssetCategory;
+    locationId: string;
+    code: string;
+    name: string;
+    kind: string;
+    brand: string;
+    model: string;
+    specification: string;
+    unit: string;
+    floor: string;
+    roomNumber: string;
+    capacity: number;
+    area: number;
+    responsiblePerson: string;
+    facilities: string[];
+    status: string;
+    description: string;
+    images: string[];
+    createdAt: string;
+    updatedAt: string;
+};
 
 type Asset = {
     id: string;
@@ -26,6 +72,8 @@ type Asset = {
     itemId: string;
     roomId: string;
     locationId: string;
+    location: LocationSnapshot | null;
+    source: AssetSource | null;
     rfidCode: string;
     quantity: number;
     condition: AssetCondition;
@@ -35,6 +83,8 @@ type Asset = {
     fundingSource: string;
     description: string;
     images: string[];
+    createdAt: string;
+    updatedAt: string;
 };
 
 type AssetForm = {
@@ -107,7 +157,11 @@ const formatDate = (value: string) => {
 
 const statusStyles: Record<AssetStatus, string> = {
     Tersedia: 'bg-neutral-100 text-neutral-800 ring-1 ring-neutral-200',
+    'Diproses Peminjam':
+        'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
     Dipinjam: 'bg-neutral-900 text-white ring-1 ring-neutral-800',
+    'Diproses Pengembalian':
+        'bg-blue-50 text-blue-800 ring-1 ring-blue-200',
     Maintenance: 'bg-neutral-200 text-neutral-800 ring-1 ring-neutral-300',
     'Tidak Aktif': 'bg-neutral-300 text-neutral-700 ring-1 ring-neutral-400',
 };
@@ -491,7 +545,7 @@ export default function DataAset() {
                     description="Pantau inventaris barang dan ruangan, status penggunaan, serta kondisi aset fakultas."
                     contextLabel="Inventaris aset"
                     icon="package"
-                    statusLabel="Status aset terpantau"
+                    statusLabel="Status ketersediaan terpantau"
                     metrics={[
                         { label: 'Total aset', value: assets.length },
                         {
@@ -524,15 +578,23 @@ export default function DataAset() {
                         </p>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={openCreateModal}
-                        disabled={loading}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
-                    >
-                        <Icon name="plus" size={17} />
-                        Tambah Aset
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <ClearManagementDataButton
+                            endpoint="/api/admin/assets/clear"
+                            dataLabel="aset"
+                            warning="Data aset juga tampil di Katalog Aset. Pembersihan di sini akan mengosongkan keduanya."
+                            onCleared={() => setAssets([])}
+                        />
+                        <button
+                            type="button"
+                            onClick={openCreateModal}
+                            disabled={loading}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                        >
+                            <Icon name="plus" size={17} />
+                            Tambah Aset
+                        </button>
+                    </div>
                 </div>
 
                 {/* STATISTICS */}
@@ -598,9 +660,15 @@ export default function DataAset() {
                                 }}
                                 className={inputClass}
                             >
-                                <option value="Semua">Semua Status</option>
+                                <option value="Semua">Semua Status Ketersediaan</option>
                                 <option value="Tersedia">Tersedia</option>
+                                <option value="Diproses Peminjam">
+                                    Diproses Peminjam
+                                </option>
                                 <option value="Dipinjam">Dipinjam</option>
+                                <option value="Diproses Pengembalian">
+                                    Diproses Pengembalian
+                                </option>
                                 <option value="Maintenance">Maintenance</option>
                                 <option value="Tidak Aktif">Tidak Aktif</option>
                             </select>
@@ -625,7 +693,7 @@ export default function DataAset() {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[900px] text-left text-sm">
+                        <table className="w-full min-w-[3600px] text-left text-sm">
                             <thead className="bg-neutral-50 text-xs text-neutral-500">
                                 <tr>
                                     <th className="px-5 py-4 font-semibold">
@@ -635,7 +703,10 @@ export default function DataAset() {
                                         Kategori
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
-                                        Lokasi
+                                        Data Lokasi Lengkap
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Data Sumber Lengkap
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
                                         Jumlah
@@ -644,7 +715,25 @@ export default function DataAset() {
                                         Kondisi
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
-                                        Status
+                                        Status Ketersediaan
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Tanggal Perolehan
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Harga
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Sumber Dana
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Deskripsi Aset
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Dibuat
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Diperbarui
                                     </th>
                                     <th className="px-5 py-4 text-right font-semibold">
                                         Aksi
@@ -694,6 +783,9 @@ export default function DataAset() {
                                                         {asset.name}
                                                     </p>
 
+                                                    <p className="mt-1 text-[10px] text-neutral-400">
+                                                        ID: {asset.id}
+                                                    </p>
                                                     <p className="mt-1 text-xs text-neutral-400">
                                                         {asset.code}
                                                     </p>
@@ -716,8 +808,82 @@ export default function DataAset() {
                                             </span>
                                         </td>
 
-                                        <td className="max-w-48 px-5 py-4 text-xs leading-5 text-neutral-600">
-                                            {getLocationName(asset.locationId)}
+                                        <td className="max-w-[380px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            <div className="space-y-1">
+                                                <p className="font-semibold text-neutral-800">
+                                                    {asset.location?.code || '-'} · {asset.location?.name || getLocationName(asset.locationId)}
+                                                </p>
+                                                <p>ID: {asset.locationId || '-'}</p>
+                                                <p>Jenis: {asset.location?.type || '-'} · Area: {asset.location?.area || '-'}</p>
+                                                <p>Alamat: {asset.location?.address || '-'}</p>
+                                                <p>Penanggung jawab: {asset.location?.responsible || '-'} · Telepon: {asset.location?.phone || '-'}</p>
+                                                <p>Deskripsi: {asset.location?.description || '-'}</p>
+                                                <p>Dibuat: {asset.location?.createdAt || '-'} · Diperbarui: {asset.location?.updatedAt || '-'}</p>
+                                                <button
+                                                    type="button"
+                                                    disabled={!asset.location?.images.length}
+                                                    onClick={() => {
+                                                        if (asset.location?.images.length) {
+                                                            setImagePreview({
+                                                                images: asset.location.images,
+                                                                index: 0,
+                                                                entityName: asset.location.name,
+                                                            });
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1 rounded-lg bg-neutral-100 px-2 py-1 text-[11px] font-medium text-neutral-600 disabled:cursor-default"
+                                                >
+                                                    <Icon name="image" size={12} />
+                                                    {asset.location?.images.length ?? 0} foto lokasi
+                                                </button>
+                                            </div>
+                                        </td>
+
+                                        <td className="max-w-[480px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            {asset.source ? (
+                                                <div className="space-y-1">
+                                                    <p className="font-semibold text-neutral-800">
+                                                        ID: {asset.source.id} · {asset.source.code} · {asset.source.name}
+                                                    </p>
+                                                    <p>Jenis sumber: {asset.source.kind || '-'} · RFID: {asset.rfidCode || '-'}</p>
+                                                    <p>ID lokasi sumber: {asset.source.locationId || '-'}</p>
+                                                    {asset.category === 'Barang' ? (
+                                                        <>
+                                                            <p>Merek: {asset.source.brand || '-'} · Model: {asset.source.model || '-'}</p>
+                                                            <p>Spesifikasi: {asset.source.specification || '-'}</p>
+                                                            <p>Satuan: {asset.source.unit || '-'} · Status barang: {asset.source.status || '-'}</p>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <p>Lantai: {asset.source.floor || '-'} · Nomor ruangan: {asset.source.roomNumber || '-'}</p>
+                                                            <p>Kapasitas: {asset.source.capacity} orang · Luas: {asset.source.area} m²</p>
+                                                            <p>Fasilitas: {asset.source.facilities.join(', ') || '-'}</p>
+                                                        </>
+                                                    )}
+                                                    <p>Penanggung jawab: {asset.source.responsiblePerson || '-'}</p>
+                                                    <p>Deskripsi sumber: {asset.source.description || '-'}</p>
+                                                    <p>Dibuat: {asset.source.createdAt || '-'} · Diperbarui: {asset.source.updatedAt || '-'}</p>
+                                                    <button
+                                                        type="button"
+                                                        disabled={!asset.source.images.length}
+                                                        onClick={() => {
+                                                            if (asset.source?.images.length) {
+                                                                setImagePreview({
+                                                                    images: asset.source.images,
+                                                                    index: 0,
+                                                                    entityName: asset.source?.name ?? asset.name,
+                                                                });
+                                                            }
+                                                        }}
+                                                        className="inline-flex items-center gap-1 rounded-lg bg-neutral-100 px-2 py-1 text-[11px] font-medium text-neutral-600 disabled:cursor-default"
+                                                    >
+                                                        <Icon name="image" size={12} />
+                                                        {asset.source.images.length} foto sumber
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span>Sumber data tidak ditemukan.</span>
+                                            )}
                                         </td>
 
                                         <td className="px-5 py-4 text-neutral-700">
@@ -738,6 +904,30 @@ export default function DataAset() {
                                             >
                                                 {asset.status}
                                             </span>
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {formatDate(asset.acquisitionDate)}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {formatCurrency(asset.price)}
+                                        </td>
+
+                                        <td className="whitespace-pre-wrap px-5 py-4 text-xs text-neutral-600">
+                                            {asset.fundingSource || '-'}
+                                        </td>
+
+                                        <td className="max-w-[300px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            {asset.description || '-'}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {asset.createdAt || '-'}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {asset.updatedAt || '-'}
                                         </td>
 
                                         <td className="px-5 py-4">
@@ -786,7 +976,7 @@ export default function DataAset() {
                                 {paginatedAssets.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan={7}
+                                            colSpan={14}
                                             className="px-5 py-14 text-center"
                                         >
                                             <Icon
@@ -1212,7 +1402,7 @@ export default function DataAset() {
                                         </select>
                                     </Field>
 
-                                    <Field label="Status Aset">
+                                    <Field label="Status Ketersediaan">
                                         <select
                                             value={form.status}
                                             onChange={(event) =>
@@ -1224,7 +1414,9 @@ export default function DataAset() {
                                             className={inputClass}
                                         >
                                             <option>Tersedia</option>
+                                            <option>Diproses Peminjam</option>
                                             <option>Dipinjam</option>
+                                            <option>Diproses Pengembalian</option>
                                             <option>Maintenance</option>
                                             <option>Tidak Aktif</option>
                                         </select>
@@ -1387,7 +1579,10 @@ export default function DataAset() {
                                     ['Lokasi', getLocationName(detailAsset.locationId)],
                                     ['Jumlah', `${detailAsset.quantity} unit`],
                                     ['Kondisi', detailAsset.condition],
-                                    ['Status', detailAsset.status],
+                                    [
+                                        'Status Ketersediaan',
+                                        detailAsset.status,
+                                    ],
                                     ['Perolehan', formatDate(detailAsset.acquisitionDate)],
                                     ['Harga', formatCurrency(detailAsset.price)],
                                     ['Sumber Dana', detailAsset.fundingSource],

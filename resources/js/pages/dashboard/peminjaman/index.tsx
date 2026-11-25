@@ -9,38 +9,59 @@ import { createPortal } from 'react-dom';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
 import Icon, { type IconName } from '@/components/Icon';
 import AssetManagementBanner from '@/components/dashboard/AssetManagementBanner';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '@/lib/management-client';
 
-type BorrowingStatus =
-    | 'Menunggu'
+type BorrowingApprovalStatus =
+    | 'Menunggu Persetujuan'
     | 'Disetujui'
-    | 'Ditolak'
-    | 'Dipinjam'
-    | 'Selesai';
+    | 'Tidak Disetujui'
+    | 'Dibatalkan';
 
 type AssetType = 'Barang' | 'Ruangan';
 type BorrowingAssetType = AssetType | 'Campuran';
 
 type Borrowing = {
-    id: number;
+    id: string;
     code: string;
     borrower: string;
     identity: string;
     borrowerType: string;
+    phone: string;
+    email: string;
+    faculty: string;
+    studyProgram: string;
+    position: string;
+    address: string;
     organization: string;
+    borrowingCategory: string;
     asset: string;
     assets?: BorrowingAsset[];
     assetType: BorrowingAssetType;
     quantity: number;
     purpose: string;
+    usageLocation: string;
+    participantCount: string;
     borrowDate: string;
     returnDate: string;
-    status: BorrowingStatus;
+    endDate: string;
+    startTime: string;
+    endTime: string;
+    approvalStatus: BorrowingApprovalStatus;
     submittedAt: string;
+    reviewedAt: string;
     notes: string;
+    activityName: string;
+    activityPosition: string;
+    responsiblePerson: string;
+    responsiblePhone: string;
+    documents: Record<string, string>;
 };
 
 type BorrowingAsset = {
-    id: number;
+    id: string;
     code: string;
     name: string;
     type: AssetType;
@@ -52,248 +73,23 @@ type BorrowingAsset = {
     quantity: number;
 };
 
-const BORROWABLE_ASSETS: Omit<BorrowingAsset, 'quantity'>[] = [
-    {
-        id: 1,
-        code: 'FAMS-BRG-001',
-        name: 'Laptop Lenovo ThinkPad',
-        type: 'Barang',
-        image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=900&q=85',
-        location: 'Gedung Fakultas Teknologi Informasi',
-        condition: 'Baik',
-        availableQuantity: 8,
-        summary: 'Laptop untuk kegiatan akademik dan pengerjaan proyek.',
-    },
-    {
-        id: 2,
-        code: 'FAMS-BRG-002',
-        name: 'Proyektor Epson',
-        type: 'Barang',
-        image: 'https://images.unsplash.com/photo-1528395874238-34ebe249b3f2?auto=format&fit=crop&w=900&q=85',
-        location: 'Ruang Administrasi',
-        condition: 'Baik',
-        availableQuantity: 4,
-        summary: 'Proyektor untuk presentasi, perkuliahan, dan seminar.',
-    },
-    {
-        id: 3,
-        code: 'FAMS-BRG-003',
-        name: 'Kamera DSLR Canon',
-        type: 'Barang',
-        image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=900&q=85',
-        location: 'Ruang Media',
-        condition: 'Baik',
-        availableQuantity: 3,
-        summary: 'Kamera dokumentasi untuk kegiatan fakultas.',
-    },
-    {
-        id: 4,
-        code: 'FAMS-BRG-004',
-        name: 'Printer Epson L3210',
-        type: 'Barang',
-        image: 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?auto=format&fit=crop&w=900&q=85',
-        location: 'Ruang Administrasi',
-        condition: 'Baik',
-        availableQuantity: 2,
-        summary: 'Printer multifungsi untuk kebutuhan dokumen.',
-    },
-    {
-        id: 5,
-        code: 'FAMS-BRG-005',
-        name: 'Perangkat Audio',
-        type: 'Barang',
-        image: 'https://images.unsplash.com/photo-1593078166031-9e8e9c4e3a9e?auto=format&fit=crop&w=900&q=85',
-        location: 'Ruang Serbaguna',
-        condition: 'Baik',
-        availableQuantity: 2,
-        summary: 'Perangkat audio untuk acara dan kegiatan fakultas.',
-    },
-    {
-        id: 6,
-        code: 'FAMS-BRG-006',
-        name: 'Tablet Samsung Galaxy',
-        type: 'Barang',
-        image: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=900&q=85',
-        location: 'Laboratorium',
-        condition: 'Baik',
-        availableQuantity: 5,
-        summary: 'Tablet untuk presentasi dan pendukung kegiatan belajar.',
-    },
-    {
-        id: 7,
-        code: 'FAMS-RNG-001',
-        name: 'Laboratorium Komputer',
-        type: 'Ruangan',
-        image: 'https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=900&q=85',
-        location: 'Gedung Laboratorium, Lantai 2',
-        condition: 'Baik',
-        availableQuantity: 3,
-        summary: 'Laboratorium dengan fasilitas komputer untuk praktikum.',
-    },
-    {
-        id: 8,
-        code: 'FAMS-RNG-002',
-        name: 'Ruang Kelas 301',
-        type: 'Ruangan',
-        image: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=900&q=85',
-        location: 'Gedung Fakultas, Lantai 3',
-        condition: 'Baik',
-        availableQuantity: 4,
-        summary: 'Ruang kelas untuk perkuliahan dan kegiatan akademik.',
-    },
-    {
-        id: 9,
-        code: 'FAMS-RNG-003',
-        name: 'Ruang Seminar FTI',
-        type: 'Ruangan',
-        image: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=85',
-        location: 'Gedung Fakultas, Lantai 1',
-        condition: 'Baik',
-        availableQuantity: 2,
-        summary: 'Ruang seminar untuk presentasi dan kegiatan organisasi.',
-    },
-    {
-        id: 10,
-        code: 'FAMS-RNG-004',
-        name: 'Ruang Rapat Fakultas',
-        type: 'Ruangan',
-        image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=900&q=85',
-        location: 'Gedung Fakultas, Lantai 2',
-        condition: 'Baik',
-        availableQuantity: 2,
-        summary: 'Ruang rapat untuk koordinasi dan diskusi tim.',
-    },
-    {
-        id: 11,
-        code: 'FAMS-RNG-005',
-        name: 'Ruang Diskusi',
-        type: 'Ruangan',
-        image: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=85',
-        location: 'Gedung Fakultas, Lantai 2',
-        condition: 'Baik',
-        availableQuantity: 3,
-        summary: 'Ruang diskusi untuk kerja kelompok dan konsultasi.',
-    },
-    {
-        id: 12,
-        code: 'FAMS-RNG-006',
-        name: 'Ruang Serbaguna',
-        type: 'Ruangan',
-        image: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=900&q=85',
-        location: 'Gedung Fakultas, Lantai 1',
-        condition: 'Baik',
-        availableQuantity: 2,
-        summary: 'Ruang fleksibel untuk berbagai kegiatan fakultas.',
-    },
-];
+type BorrowerProfile = {
+    name: string;
+    email: string;
+    phone: string;
+    borrowerType: string;
+    identity: string;
+    faculty: string;
+    studyProgram: string;
+    position: string;
+    organizationName: string;
+    borrowingContext: string;
+    address: string;
+};
 
 const ASSET_CAROUSEL_PAGE_SIZE = 3;
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-const initialBorrowings: Borrowing[] = [
-    {
-        id: 1,
-        code: 'PJM-2026-001',
-        borrower: 'Rendra Nur Yuliadi',
-        identity: '240160121104',
-        borrowerType: 'Mahasiswa',
-        organization: 'UKM TahuNgoding',
-        asset: 'Proyektor Epson',
-        assetType: 'Barang',
-        quantity: 1,
-        purpose: 'Kegiatan workshop teknologi',
-        borrowDate: '2026-11-04',
-        returnDate: '2026-11-05',
-        status: 'Menunggu',
-        submittedAt: '2026-11-01',
-        notes: 'Digunakan untuk kegiatan workshop.',
-    },
-    {
-        id: 2,
-        code: 'PJM-2026-002',
-        borrower: 'Amelia Puji Lestari',
-        identity: '240160121007',
-        borrowerType: 'Mahasiswa',
-        organization: 'Individu',
-        asset: 'Laboratorium Komputer 1',
-        assetType: 'Ruangan',
-        quantity: 1,
-        purpose: 'Praktikum pemrograman',
-        borrowDate: '2026-11-02',
-        returnDate: '2026-11-03',
-        status: 'Disetujui',
-        submittedAt: '2026-10-30',
-        notes: 'Untuk praktikum laboratorium.',
-    },
-    {
-        id: 3,
-        code: 'PJM-2026-003',
-        borrower: 'Herliana Tri Cahyanti',
-        identity: '240160121044',
-        borrowerType: 'Mahasiswa',
-        organization: 'Himpunan Mahasiswa',
-        asset: 'Kamera DSLR',
-        assetType: 'Barang',
-        quantity: 1,
-        purpose: 'Dokumentasi kegiatan',
-        borrowDate: '2026-10-29',
-        returnDate: '2026-10-30',
-        status: 'Dipinjam',
-        submittedAt: '2026-10-27',
-        notes: 'Dikembalikan setelah kegiatan selesai.',
-    },
-    {
-        id: 4,
-        code: 'PJM-2026-004',
-        borrower: 'Wulan Nurfitriani',
-        identity: '240160121116',
-        borrowerType: 'Mahasiswa',
-        organization: 'UKM TahuNgoding',
-        asset: 'Ruang Seminar FTI',
-        assetType: 'Ruangan',
-        quantity: 1,
-        purpose: 'Acara internal organisasi',
-        borrowDate: '2026-10-25',
-        returnDate: '2026-10-26',
-        status: 'Selesai',
-        submittedAt: '2026-10-22',
-        notes: 'Ruangan telah selesai digunakan.',
-    },
-    {
-        id: 5,
-        code: 'PJM-2026-005',
-        borrower: 'Jajang Didin',
-        identity: '240160121088',
-        borrowerType: 'Mahasiswa',
-        organization: 'UKM TahuNgoding',
-        asset: 'Laptop Lenovo ThinkPad',
-        assetType: 'Barang',
-        quantity: 1,
-        purpose: 'Pengerjaan proyek',
-        borrowDate: '2026-10-24',
-        returnDate: '2026-10-25',
-        status: 'Ditolak',
-        submittedAt: '2026-10-21',
-        notes: 'Jadwal penggunaan aset tidak tersedia.',
-    },
-];
-
-const statusStyles: Record<BorrowingStatus, string> = {
-    Menunggu: 'bg-neutral-100 text-neutral-700 border-neutral-200',
-    Disetujui: 'bg-neutral-200 text-neutral-800 border-neutral-300',
-    Ditolak: 'bg-neutral-300 text-neutral-900 border-neutral-400',
-    Dipinjam: 'bg-neutral-100 text-neutral-800 border-neutral-300',
-    Selesai: 'bg-black text-white border-black',
-};
-
-const statusIcons: Record<BorrowingStatus, IconName> = {
-    Menunggu: 'clock',
-    Disetujui: 'check-circle',
-    Ditolak: 'x-circle',
-    Dipinjam: 'package',
-    Selesai: 'check-check',
-};
 
 const assetTypeStyles: Record<BorrowingAssetType, string> = {
     Barang: 'bg-neutral-100 text-neutral-800 border-neutral-200',
@@ -339,10 +135,10 @@ const emptyForm = {
     // Step 1: Identitas
     photo: null as File | null,
     borrower: '',
-    borrowerType: 'Mahasiswa',
+    borrowerType: 'Pihak Eksternal',
     identity: '',
-    faculty: 'Fakultas Teknologi Informasi',
-    studyProgram: 'Informatika',
+    faculty: '',
+    studyProgram: '',
     position: '',
     phone: '',
     email: '',
@@ -419,12 +215,23 @@ const steps = [
     },
 ];
 
-function StatusBadge({ status }: { status: BorrowingStatus }) {
+function ApprovalStatusBadge({
+    status,
+}: {
+    status: BorrowingApprovalStatus;
+}) {
+    const styles: Record<BorrowingApprovalStatus, string> = {
+        'Menunggu Persetujuan':
+            'bg-amber-50 text-amber-700 border-amber-200',
+        Disetujui: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'Tidak Disetujui': 'bg-red-50 text-red-700 border-red-200',
+        Dibatalkan: 'bg-gray-50 text-gray-500 border-gray-200',
+    };
+
     return (
         <span
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${statusStyles[status]}`}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${styles[status]}`}
         >
-            <Icon name={statusIcons[status]} size={13} />
             {status}
         </span>
     );
@@ -672,18 +479,23 @@ function FileUpload({
     );
 }
 
-export default function PeminjamanIndex({
-    startWithCreateModal = false,
-}: {
-    startWithCreateModal?: boolean;
-}) {
-    const [borrowings, setBorrowings] = useState(initialBorrowings);
+export default function PeminjamanIndex() {
+    const [borrowings, setBorrowings] = useState<Borrowing[]>([]);
+    const [borrowableAssetRecords, setBorrowableAssetRecords] = useState<
+        Omit<BorrowingAsset, 'quantity'>[]
+    >([]);
+    const [profile, setProfile] = useState<BorrowerProfile | null>(null);
+    const [dataLoading, setDataLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [reloadKey, setReloadKey] = useState(0);
+    const [submitting, setSubmitting] = useState(false);
+    const [cancellingId, setCancellingId] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('Semua Status');
     const [typeFilter, setTypeFilter] = useState('Semua Tipe Aset');
     const [currentPage, setCurrentPage] = useState(1);
 
-    const [modalOpen, setModalOpen] = useState(startWithCreateModal);
+    const [modalOpen, setModalOpen] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
     const [completedSteps, setCompletedSteps] = useState<number[]>([]);
     const [detailItem, setDetailItem] = useState<Borrowing | null>(null);
@@ -693,9 +505,43 @@ export default function PeminjamanIndex({
 
     const perPage = 5;
 
+    useEffect(() => {
+        let active = true;
+
+        managementRequest<{
+            profile: BorrowerProfile;
+            borrowings: Borrowing[];
+            borrowableAssets: Omit<BorrowingAsset, 'quantity'>[];
+        }>('/api/borrowings')
+            .then((response) => {
+                if (
+                    !Array.isArray(response.borrowings) ||
+                    !Array.isArray(response.borrowableAssets)
+                ) {
+                    throw new Error('Data peminjaman tidak valid.');
+                }
+                if (active) {
+                    setProfile(response.profile);
+                    setBorrowings(response.borrowings);
+                    setBorrowableAssetRecords(response.borrowableAssets);
+                    setLoadError('');
+                }
+            })
+            .catch((error: unknown) => {
+                if (active) setLoadError(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setDataLoading(false);
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [reloadKey]);
+
     const filteredItems = useMemo(() => {
         return borrowings.filter((item) => {
-            const keyword = search.toLowerCase();
+            const keyword = search.toLowerCase().trim();
 
             const matchesSearch =
                 item.code.toLowerCase().includes(keyword) ||
@@ -705,7 +551,7 @@ export default function PeminjamanIndex({
 
             const matchesStatus =
                 statusFilter === 'Semua Status' ||
-                item.status === statusFilter;
+                item.approvalStatus === statusFilter;
 
             const matchesType =
                 typeFilter === 'Semua Tipe Aset' ||
@@ -716,26 +562,24 @@ export default function PeminjamanIndex({
         });
     }, [borrowings, search, statusFilter, typeFilter]);
 
-    const totalPages = Math.max(
-        1,
-        Math.ceil(filteredItems.length / perPage),
-    );
+    const totalPages = Math.max(1, Math.ceil(filteredItems.length / perPage));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
 
     const paginatedItems = filteredItems.slice(
-        (currentPage - 1) * perPage,
-        currentPage * perPage,
+        (safeCurrentPage - 1) * perPage,
+        safeCurrentPage * perPage,
     );
 
     const borrowableAssets = useMemo(
         () =>
-            BORROWABLE_ASSETS.filter(
+            borrowableAssetRecords.filter(
                 (asset) => asset.type === form.assetType,
             ),
-        [form.assetType],
+        [borrowableAssetRecords, form.assetType],
     );
-    const assetCarouselPages = Math.ceil(
+    const assetCarouselPages = Math.max(1, Math.ceil(
         borrowableAssets.length / ASSET_CAROUSEL_PAGE_SIZE,
-    );
+    ));
     const visibleBorrowableAssets = borrowableAssets.slice(
         assetCarouselPage * ASSET_CAROUSEL_PAGE_SIZE,
         (assetCarouselPage + 1) * ASSET_CAROUSEL_PAGE_SIZE,
@@ -771,7 +615,10 @@ export default function PeminjamanIndex({
         },
         {
             label: 'Menunggu Persetujuan',
-            value: borrowings.filter((item) => item.status === 'Menunggu')
+            value: borrowings.filter(
+                (item) =>
+                    item.approvalStatus === 'Menunggu Persetujuan',
+            )
                 .length,
             icon: 'clock' as IconName,
             card: 'border-gray-700 bg-gray-800 text-white',
@@ -783,30 +630,31 @@ export default function PeminjamanIndex({
             description: 'Perlu ditinjau',
         },
         {
-            label: 'Sedang Dipinjam',
-            value: borrowings.filter((item) => item.status === 'Dipinjam')
+            label: 'Disetujui',
+            value: borrowings.filter((item) => item.approvalStatus === 'Disetujui')
                 .length,
-            icon: 'package' as IconName,
+            icon: 'check-circle' as IconName,
             card: 'border-gray-300 bg-gray-200 text-gray-950',
             labelColor: 'text-gray-600',
             valueColor: 'text-gray-950',
             descriptionColor: 'text-gray-600',
             iconColor: 'bg-white/70 text-gray-800',
             texture: 'radial-gradient(circle at 1px 1px, rgba(17,24,39,.11) 1px, transparent 0)',
-            description: 'Belum dikembalikan',
+            description: 'Disetujui pengelola',
         },
         {
-            label: 'Selesai',
-            value: borrowings.filter((item) => item.status === 'Selesai')
-                .length,
-            icon: 'check-circle' as IconName,
+            label: 'Tidak Disetujui',
+            value: borrowings.filter(
+                (item) => item.approvalStatus === 'Tidak Disetujui',
+            ).length,
+            icon: 'x-circle' as IconName,
             card: 'border-gray-200 bg-white text-gray-950',
             labelColor: 'text-gray-500',
             valueColor: 'text-gray-950',
             descriptionColor: 'text-gray-500',
             iconColor: 'bg-gray-100 text-gray-700',
             texture: 'repeating-linear-gradient(45deg, rgba(17,24,39,.035) 0px, rgba(17,24,39,.035) 1px, transparent 1px, transparent 9px)',
-            description: 'Telah dikembalikan',
+            description: 'Ditolak pengelola',
         },
     ];
 
@@ -855,14 +703,14 @@ export default function PeminjamanIndex({
         setFormError('');
     };
 
-    const removeBorrowableAsset = (assetId: number) => {
+    const removeBorrowableAsset = (assetId: string) => {
         updateSelectedAssets(
             form.selectedAssets.filter((asset) => asset.id !== assetId),
         );
     };
 
     const changeBorrowableAssetQuantity = (
-        assetId: number,
+        assetId: string,
         quantity: number,
     ) => {
         updateSelectedAssets(
@@ -881,7 +729,25 @@ export default function PeminjamanIndex({
     };
 
     const openCreateModal = () => {
-        setForm({ ...emptyForm });
+        setForm({
+            ...emptyForm,
+            borrower: profile?.name ?? '',
+            borrowerType: profile?.borrowerType ?? 'Pihak Eksternal',
+            identity: profile?.identity ?? '',
+            faculty: profile?.faculty ?? '',
+            studyProgram: profile?.studyProgram ?? '',
+            position: profile?.position ?? '',
+            phone: profile?.phone ?? '',
+            email: profile?.email ?? '',
+            address: profile?.address ?? '',
+            borrowingCategory:
+                profile?.borrowingContext === 'organisasi'
+                    ? 'Organisasi'
+                    : 'Individu',
+            organization: profile?.organizationName ?? '',
+            responsiblePerson: profile?.name ?? '',
+            responsiblePhone: profile?.phone ?? '',
+        });
         setCurrentStep(0);
         setCompletedSteps([]);
         setFormError('');
@@ -1036,69 +902,122 @@ export default function PeminjamanIndex({
         setFormError('');
     };
 
-    const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
         if (!validateStep(5)) return;
 
         setCompletedSteps(steps.map((_, index) => index));
-        const newItem: Borrowing = {
-            id: Date.now(),
-            code: `PJM-${new Date().getFullYear()}-${String(
-                borrowings.length + 1,
-            ).padStart(3, '0')}`,
-            borrower: form.borrower,
-            identity: form.identity,
-            borrowerType: form.borrowerType,
-            organization:
-                form.borrowingCategory === 'Individu'
-                    ? 'Individu'
-                    : form.organization,
-            asset: form.selectedAssets
-                .map(
-                    (asset) =>
-                        `${asset.name} (${asset.quantity} ${
-                            asset.type === 'Barang' ? 'unit' : 'ruangan'
-                        })`,
-                )
-                .join(', '),
-            assets: form.selectedAssets.map((asset) => ({ ...asset })),
-            assetType: selectedBorrowingType,
-            quantity: form.selectedAssets.reduce(
-                (total, asset) => total + asset.quantity,
-                0,
+        const requestData = new FormData();
+        const textFields: (keyof BorrowingForm)[] = [
+            'borrower',
+            'borrowerType',
+            'identity',
+            'faculty',
+            'studyProgram',
+            'position',
+            'phone',
+            'email',
+            'address',
+            'borrowingCategory',
+            'organization',
+            'activityName',
+            'activityPosition',
+            'responsiblePerson',
+            'responsiblePhone',
+            'purpose',
+            'usageLocation',
+            'participantCount',
+            'borrowDate',
+            'startTime',
+            'endDate',
+            'endTime',
+            'returnDate',
+            'notes',
+        ];
+        for (const field of textFields) {
+            requestData.append(field, String(form[field]));
+        }
+        requestData.set(
+            'returnDate',
+            hasSelectedItems ? form.returnDate : form.endDate,
+        );
+        requestData.append(
+            'assets',
+            JSON.stringify(
+                form.selectedAssets.map(({ id, quantity }) => ({
+                    id,
+                    quantity,
+                })),
             ),
-            purpose: form.purpose,
-            borrowDate: form.borrowDate,
-            returnDate:
-                hasSelectedItems
-                    ? form.returnDate
-                    : form.endDate,
-            status: 'Menunggu',
-            submittedAt: new Date().toISOString().slice(0, 10),
-            notes: form.notes,
-        };
+        );
+        requestData.append('agreement', String(form.agreement));
+        for (const field of [
+            'photo',
+            'identityDocument',
+            'applicationLetter',
+            'proposalDocument',
+            'organizationLetter',
+            'otherDocument',
+        ] as const) {
+            const file = form[field];
+            if (file) requestData.append(field, file);
+        }
 
-        setBorrowings((previous) => [newItem, ...previous]);
-        setCurrentPage(1);
-        closeModal();
+        setSubmitting(true);
+        setFormError('');
+        try {
+            const response = await managementRequest<{
+                borrowing: Borrowing;
+            }>('/api/borrowings', {
+                method: 'POST',
+                body: requestData,
+            });
+            setBorrowings((previous) => [
+                response.borrowing,
+                ...previous,
+            ]);
+            setCurrentPage(1);
+            closeModal();
+            setReloadKey((current) => current + 1);
+        } catch (error: unknown) {
+            setFormError(managementErrorMessage(error));
+        } finally {
+            setSubmitting(false);
+        }
     };
 
-    const updateStatus = (
-        id: number,
-        status: BorrowingStatus,
-    ) => {
-        setBorrowings((previous) =>
-            previous.map((item) =>
-                item.id === id ? { ...item, status } : item,
-            ),
-        );
+    const cancelBorrowing = async (item: Borrowing) => {
+        if (
+            !window.confirm(
+                `Batalkan pengajuan peminjaman ${item.code}?`,
+            )
+        ) {
+            return;
+        }
 
-        setDetailItem((previous) =>
-            previous?.id === id
-                ? { ...previous, status }
-                : previous,
-        );
+        setCancellingId(item.id);
+        try {
+            const response = await managementRequest<{
+                borrowing: Borrowing;
+            }>(`/api/borrowings/${encodeURIComponent(item.id)}`, {
+                method: 'DELETE',
+            });
+            setBorrowings((previous) =>
+                previous.map((borrowing) =>
+                    borrowing.id === item.id
+                        ? response.borrowing
+                        : borrowing,
+                ),
+            );
+            setDetailItem(null);
+            setCurrentPage(1);
+            setReloadKey((current) => current + 1);
+        } catch (error: unknown) {
+            window.alert(managementErrorMessage(error));
+        } finally {
+            setCancellingId(null);
+        }
     };
 
     const resetFilters = () => {
@@ -1536,6 +1455,11 @@ export default function PeminjamanIndex({
                             </div>
                         </div>
 
+                        {borrowableAssets.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-5 py-10 text-center text-sm text-gray-500 sm:col-span-2 xl:col-span-3">
+                                Tidak ada aset {form.assetType.toLowerCase()} yang tersedia saat ini.
+                            </div>
+                        ) : (
                         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                             {visibleBorrowableAssets.map((asset) => {
                                 const selectedAsset =
@@ -1554,11 +1478,17 @@ export default function PeminjamanIndex({
                                         }`}
                                     >
                                         <div className="relative h-40 overflow-hidden bg-gray-100">
-                                            <img
-                                                src={asset.image}
-                                                alt={asset.name}
-                                                className="h-full w-full object-cover transition duration-500 hover:scale-105"
-                                            />
+                                            {asset.image ? (
+                                                <img
+                                                    src={asset.image}
+                                                    alt={asset.name}
+                                                    className="h-full w-full object-cover transition duration-500 hover:scale-105"
+                                                />
+                                            ) : (
+                                                <div className="flex h-full items-center justify-center text-gray-400">
+                                                    <Icon name="image" size={30} />
+                                                </div>
+                                            )}
                                             <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-gray-700 shadow-sm">
                                                 {asset.type}
                                             </span>
@@ -1702,6 +1632,7 @@ export default function PeminjamanIndex({
                                 );
                             })}
                         </div>
+                        )}
 
                         <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
                             <span>
@@ -2366,9 +2297,28 @@ export default function PeminjamanIndex({
     return (
         <DashboardLayout>
             <div className="w-full min-w-0 space-y-6 pb-8">
+                {loadError && (
+                    <div
+                        role="alert"
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-white p-4 text-sm text-neutral-700"
+                    >
+                        <span>Data peminjaman gagal dimuat: {loadError}</span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDataLoading(true);
+                                setLoadError('');
+                                setReloadKey((current) => current + 1);
+                            }}
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium hover:bg-gray-50"
+                        >
+                            Coba lagi
+                        </button>
+                    </div>
+                )}
                 <AssetManagementBanner
-                    title="Kelola Peminjaman Aset."
-                    description="Pantau pengajuan peminjaman barang dan ruangan, kelola persetujuan, serta awasi penggunaan aset fakultas."
+                    title="Peminjaman Saya."
+                    description="Ajukan peminjaman barang atau ruangan dan pantau status permohonan dari akun Anda."
                     contextLabel="Data peminjaman"
                     icon="clipboard-list"
                     statusLabel="Pengajuan dipantau"
@@ -2377,7 +2327,9 @@ export default function PeminjamanIndex({
                         {
                             label: 'Menunggu persetujuan',
                             value: borrowings.filter(
-                                (item) => item.status === 'Menunggu',
+                                (item) =>
+                                    item.approvalStatus ===
+                                    'Menunggu Persetujuan',
                             ).length,
                         },
                     ]}
@@ -2444,19 +2396,21 @@ export default function PeminjamanIndex({
                     <div className="flex flex-col gap-4 border-b border-gray-100 p-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <h2 className="text-base font-semibold text-gray-900">
-                                Daftar Peminjaman
+                                Data Peminjaman Saya
                             </h2>
                             <p className="mt-1 text-xs text-gray-400">
-                                Data peminjaman barang dan ruangan fakultas.
+                                Seluruh pengajuan peminjaman dari akun Anda.
                             </p>
                         </div>
 
                         <button
+                            type="button"
                             onClick={openCreateModal}
+                            disabled={dataLoading || Boolean(loadError)}
                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
                         >
                             <Icon name="plus" size={15} />
-                            Tambah Data
+                            Ajukan Peminjaman
                         </button>
                     </div>
 
@@ -2500,11 +2454,10 @@ export default function PeminjamanIndex({
                             className={`${inputClass} lg:w-48`}
                         >
                             <option>Semua Status</option>
-                            <option>Menunggu</option>
+                            <option>Menunggu Persetujuan</option>
                             <option>Disetujui</option>
-                            <option>Ditolak</option>
-                            <option>Dipinjam</option>
-                            <option>Selesai</option>
+                            <option>Tidak Disetujui</option>
+                            <option>Dibatalkan</option>
                         </select>
 
                         <button
@@ -2527,6 +2480,9 @@ export default function PeminjamanIndex({
                                     <th className="px-5 py-4">Tipe Aset</th>
                                     <th className="px-5 py-4">Tanggal</th>
                                     <th className="px-5 py-4">Jumlah</th>
+                                    <th className="px-5 py-4">
+                                        Status Persetujuan
+                                    </th>
                                     <th className="px-5 py-4 text-center">
                                         Aksi
                                     </th>
@@ -2597,6 +2553,12 @@ export default function PeminjamanIndex({
                                         </td>
 
                                         <td className="px-5 py-4">
+                                            <ApprovalStatusBadge
+                                                status={item.approvalStatus}
+                                            />
+                                        </td>
+
+                                        <td className="px-5 py-4">
                                             <div className="flex items-center justify-center gap-1">
                                                 <button
                                                     onClick={() =>
@@ -2611,75 +2573,20 @@ export default function PeminjamanIndex({
                                                     />
                                                 </button>
 
-                                                {item.status ===
-                                                    'Menunggu' && (
-                                                    <>
-                                                        <button
-                                                            onClick={() =>
-                                                                updateStatus(
-                                                                    item.id,
-                                                                    'Disetujui',
-                                                                )
-                                                            }
-                                                            title="Setujui"
-                                                            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
-                                                        >
-                                                            <Icon
-                                                                name="check"
-                                                                size={17}
-                                                            />
-                                                        </button>
-                                                        <button
-                                                            onClick={() =>
-                                                                updateStatus(
-                                                                    item.id,
-                                                                    'Ditolak',
-                                                                )
-                                                            }
-                                                            title="Tolak"
-                                                            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
-                                                        >
-                                                            <Icon
-                                                                name="x"
-                                                                size={17}
-                                                            />
-                                                        </button>
-                                                    </>
-                                                )}
-
-                                                {item.status ===
-                                                    'Disetujui' && (
+                                                {item.approvalStatus ===
+                                                    'Menunggu Persetujuan' && (
                                                     <button
+                                                        type="button"
                                                         onClick={() =>
-                                                            updateStatus(
-                                                                item.id,
-                                                                'Dipinjam',
-                                                            )
+                                                            cancelBorrowing(item)
                                                         }
-                                                        title="Tandai sedang dipinjam"
-                                                        className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
+                                                        disabled={cancellingId === item.id}
+                                                        title="Batalkan pengajuan"
+                                                        aria-label={`Batalkan ${item.code}`}
+                                                        className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40"
                                                     >
                                                         <Icon
-                                                            name="package"
-                                                            size={17}
-                                                        />
-                                                    </button>
-                                                )}
-
-                                                {item.status ===
-                                                    'Dipinjam' && (
-                                                    <button
-                                                        onClick={() =>
-                                                            updateStatus(
-                                                                item.id,
-                                                                'Selesai',
-                                                            )
-                                                        }
-                                                        title="Tandai selesai"
-                                                        className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
-                                                    >
-                                                        <Icon
-                                                            name="check-check"
+                                                            name="x"
                                                             size={17}
                                                         />
                                                     </button>
@@ -2689,10 +2596,19 @@ export default function PeminjamanIndex({
                                     </tr>
                                 ))}
 
-                                {paginatedItems.length === 0 && (
+                                {dataLoading ? (
                                     <tr>
                                         <td
-                                            colSpan={6}
+                                            colSpan={7}
+                                            className="px-5 py-16 text-center text-sm text-gray-500"
+                                        >
+                                            Memuat data peminjaman...
+                                        </td>
+                                    </tr>
+                                ) : paginatedItems.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={7}
                                             className="px-5 py-16 text-center"
                                         >
                                             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
@@ -2702,19 +2618,23 @@ export default function PeminjamanIndex({
                                                 />
                                             </div>
                                             <p className="mt-3 text-sm font-medium text-gray-700">
-                                                Data peminjaman tidak
-                                                ditemukan
+                                                {borrowings.length > 0
+                                                    ? 'Data peminjaman tidak ditemukan'
+                                                    : 'Belum ada pengajuan peminjaman'}
                                             </p>
                                             <p className="mt-1 text-xs text-gray-400">
-                                                Coba ubah kata kunci atau
-                                                filter pencarian.
+                                                {borrowings.length > 0
+                                                    ? 'Coba ubah kata kunci atau filter pencarian.'
+                                                    : 'Gunakan tombol Ajukan Peminjaman untuk membuat pengajuan pertama.'}
                                             </p>
-                                            <button
-                                                onClick={resetFilters}
-                                                className="mt-3 text-xs font-medium text-gray-600 underline"
-                                            >
-                                                Reset filter
-                                            </button>
+                                            {borrowings.length > 0 && (
+                                                <button
+                                                    onClick={resetFilters}
+                                                    className="mt-3 text-xs font-medium text-gray-600 underline"
+                                                >
+                                                    Reset filter
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 )}
@@ -2769,6 +2689,7 @@ export default function PeminjamanIndex({
                         </div>
                     </div>
                 </section>
+
             </div>
 
             {/* Multi-step Create Modal */}
@@ -2945,10 +2866,13 @@ export default function PeminjamanIndex({
                                     ) : (
                                         <button
                                             type="submit"
-                                            className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
+                                            disabled={submitting}
+                                            className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             <Icon name="send" size={16} />
-                                            Kirim Pengajuan
+                                            {submitting
+                                                ? 'Mengirim...'
+                                                : 'Kirim Pengajuan'}
                                         </button>
                                     )}
                                 </div>
@@ -2992,11 +2916,13 @@ export default function PeminjamanIndex({
                                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 p-4">
                                     <div>
                                         <p className="text-xs text-gray-400">
-                                            Status Pengajuan
+                                            Status Persetujuan
                                         </p>
                                         <div className="mt-2">
-                                            <StatusBadge
-                                                status={detailItem.status}
+                                            <ApprovalStatusBadge
+                                                status={
+                                                    detailItem.approvalStatus
+                                                }
                                             />
                                         </div>
                                     </div>
@@ -3011,6 +2937,18 @@ export default function PeminjamanIndex({
                                             )}
                                         </p>
                                     </div>
+                                    {detailItem.reviewedAt && (
+                                        <div className="w-full border-t border-gray-200 pt-3">
+                                            <p className="text-xs text-gray-400">
+                                                Tanggal Keputusan
+                                            </p>
+                                            <p className="mt-1 text-sm font-medium text-gray-700">
+                                                {formatDate(
+                                                    detailItem.reviewedAt,
+                                                )}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div>
@@ -3034,6 +2972,30 @@ export default function PeminjamanIndex({
                                             label="Organisasi"
                                             value={detailItem.organization}
                                         />
+                                        <DetailItem
+                                            label="Nomor HP"
+                                            value={detailItem.phone}
+                                        />
+                                        <DetailItem
+                                            label="Email"
+                                            value={detailItem.email}
+                                        />
+                                        <DetailItem
+                                            label="Fakultas / Instansi"
+                                            value={detailItem.faculty}
+                                        />
+                                        <DetailItem
+                                            label="Program Studi"
+                                            value={detailItem.studyProgram}
+                                        />
+                                        <DetailItem
+                                            label="Jabatan"
+                                            value={detailItem.position}
+                                        />
+                                        <DetailItem
+                                            label="Alamat"
+                                            value={detailItem.address}
+                                        />
                                     </div>
                                 </div>
 
@@ -3049,7 +3011,7 @@ export default function PeminjamanIndex({
                                         />
 
                                         {detailItem.assets &&
-                                            detailItem.assets.length > 1 && (
+                                            detailItem.assets.length > 0 && (
                                                 <div className="col-span-2 rounded-xl bg-gray-50 p-4">
                                                     <p className="text-xs font-medium text-gray-500">
                                                         Rincian aset
@@ -3075,9 +3037,40 @@ export default function PeminjamanIndex({
                                                                             }{' '}
                                                                             ·{' '}
                                                                             {
-                                                                                asset.location
+                                                                                asset.type
+                                                                            }{' '}
+                                                                            ·{' '}
+                                                                            {asset.location ||
+                                                                                'Lokasi tidak tersedia'}
+                                                                        </span>
+                                                                        <span className="mt-1 block text-xs text-gray-500">
+                                                                            Kondisi:{' '}
+                                                                            {asset.condition ||
+                                                                                '-'}
+                                                                        </span>
+                                                                        <span className="mt-1 block text-xs text-gray-500">
+                                                                            Ketersediaan saat pengajuan:{' '}
+                                                                            {
+                                                                                asset.availableQuantity
                                                                             }
                                                                         </span>
+                                                                        {asset.summary && (
+                                                                            <span className="mt-1 block text-xs text-gray-500">
+                                                                                {asset.summary}
+                                                                            </span>
+                                                                        )}
+                                                                        {asset.image && (
+                                                                            <a
+                                                                                href={
+                                                                                    asset.image
+                                                                                }
+                                                                                target="_blank"
+                                                                                rel="noreferrer"
+                                                                                className="mt-1 inline-block text-xs font-medium text-gray-600 underline"
+                                                                            >
+                                                                                Lihat foto aset
+                                                                            </a>
+                                                                        )}
                                                                     </span>
                                                                     <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-gray-700">
                                                                         {
@@ -3120,17 +3113,54 @@ export default function PeminjamanIndex({
                                         />
 
                                         <DetailItem
-                                            label="Tanggal Pinjam"
+                                            label="Tanggal Mulai"
                                             value={formatDate(
                                                 detailItem.borrowDate,
+                                            ) + `, ${detailItem.startTime}`}
+                                        />
+
+                                        <DetailItem
+                                            label="Tanggal Selesai"
+                                            value={
+                                                formatDate(detailItem.endDate) +
+                                                `, ${detailItem.endTime}`
+                                            }
+                                        />
+
+                                        <DetailItem
+                                            label="Rencana Pengembalian"
+                                            value={formatDate(
+                                                detailItem.returnDate,
                                             )}
                                         />
 
                                         <DetailItem
-                                            label="Tanggal Kembali"
-                                            value={formatDate(
-                                                detailItem.returnDate,
-                                            )}
+                                            label="Kategori Peminjaman"
+                                            value={detailItem.borrowingCategory}
+                                        />
+                                        <DetailItem
+                                            label="Lokasi Penggunaan"
+                                            value={detailItem.usageLocation}
+                                        />
+                                        <DetailItem
+                                            label="Nama Kegiatan"
+                                            value={detailItem.activityName}
+                                        />
+                                        <DetailItem
+                                            label="Jabatan dalam Kegiatan"
+                                            value={detailItem.activityPosition}
+                                        />
+                                        <DetailItem
+                                            label="Penanggung Jawab"
+                                            value={detailItem.responsiblePerson}
+                                        />
+                                        <DetailItem
+                                            label="Nomor Penanggung Jawab"
+                                            value={detailItem.responsiblePhone}
+                                        />
+                                        <DetailItem
+                                            label="Jumlah Peserta"
+                                            value={detailItem.participantCount}
                                         />
 
                                         <div className="col-span-2">
@@ -3149,60 +3179,44 @@ export default function PeminjamanIndex({
                                     </div>
                                 </div>
 
-                                {detailItem.status === 'Menunggu' && (
-                                    <div className="flex gap-2 border-t border-gray-100 pt-5">
-                                        <button
-                                            onClick={() =>
-                                                updateStatus(
-                                                    detailItem.id,
-                                                    'Ditolak',
-                                                )
-                                            }
-                                            className="flex-1 rounded-xl border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
-                                        >
-                                            Tolak Pengajuan
-                                        </button>
-
-                                        <button
-                                            onClick={() =>
-                                                updateStatus(
-                                                    detailItem.id,
-                                                    'Disetujui',
-                                                )
-                                            }
-                                            className="flex-1 rounded-xl bg-neutral-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
-                                        >
-                                            Setujui Pengajuan
-                                        </button>
+                                {Object.entries(detailItem.documents).length >
+                                    0 && (
+                                    <div className="border-t border-gray-100 pt-5">
+                                        <h3 className="mb-3 text-sm font-semibold text-gray-800">
+                                            Dokumen Pendukung
+                                        </h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {Object.entries(
+                                                detailItem.documents,
+                                            ).map(([name, path]) => (
+                                                <a
+                                                    key={name}
+                                                    href={path}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    {name}
+                                                </a>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
 
-                                {detailItem.status === 'Disetujui' && (
-                                    <button
-                                        onClick={() =>
-                                            updateStatus(
-                                                detailItem.id,
-                                                'Dipinjam',
-                                            )
-                                        }
-                                        className="w-full rounded-xl bg-neutral-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
-                                    >
-                                        Tandai Aset Telah Dipinjam
-                                    </button>
-                                )}
-
-                                {detailItem.status === 'Dipinjam' && (
-                                    <button
-                                        onClick={() =>
-                                            updateStatus(
-                                                detailItem.id,
-                                                'Selesai',
-                                            )
-                                        }
-                                        className="w-full rounded-xl bg-neutral-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
-                                    >
-                                        Tandai Peminjaman Selesai
-                                    </button>
+                                {detailItem.approvalStatus ===
+                                    'Menunggu Persetujuan' && (
+                                    <div className="border-t border-gray-100 pt-5">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                cancelBorrowing(detailItem)
+                                            }
+                                            disabled={cancellingId === detailItem.id}
+                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                                        >
+                                            Batalkan Pengajuan
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>

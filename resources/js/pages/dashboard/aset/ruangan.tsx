@@ -5,6 +5,7 @@ import DashboardLayout from '../../../components/layouts/DashboardLayout';
 import Icon from '../../../components/Icon';
 import type { IconName } from '../../../components/Icon';
 import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';
+import ClearManagementDataButton from '../../../components/dashboard/ClearManagementDataButton';
 import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
 import ImagePreviewModal from '../../../components/dashboard/ImagePreviewModal';
 import type { ImagePreviewState } from '../../../components/dashboard/ImagePreviewModal';
@@ -23,12 +24,28 @@ type RoomType =
     | 'Ruang Administrasi'
     | 'Lainnya';
 
+type LocationSnapshot = {
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+    address: string;
+    area: string;
+    responsible: string;
+    phone: string;
+    description: string;
+    images: string[];
+    createdAt: string;
+    updatedAt: string;
+};
+
 type Room = {
     id: string;
     code: string;
     name: string;
     type: RoomType;
     locationId: string;
+    location: LocationSnapshot | null;
     floor: string;
     roomNumber: string;
     rfidCode: string;
@@ -39,6 +56,7 @@ type Room = {
     description: string;
     images: string[];
     createdAt: string;
+    updatedAt: string;
 };
 
 type RoomFormImage = {
@@ -596,15 +614,23 @@ export default function DataRuangan() {
                         </p>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={openCreateModal}
-                        disabled={loading}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
-                    >
-                        <Icon name="plus" size={17} />
-                        Tambah Ruangan
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <ClearManagementDataButton
+                            endpoint="/api/admin/rooms/clear"
+                            dataLabel="ruangan"
+                            warning="Data ruangan yang masih dipakai oleh aset tidak dapat dihapus. Bersihkan aset terkait terlebih dahulu."
+                            onCleared={() => setRooms([])}
+                        />
+                        <button
+                            type="button"
+                            onClick={openCreateModal}
+                            disabled={loading}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                        >
+                            <Icon name="plus" size={17} />
+                            Tambah Ruangan
+                        </button>
+                    </div>
                 </div>
 
                 {/* STATISTICS */}
@@ -687,7 +713,7 @@ export default function DataRuangan() {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[900px] text-left text-sm">
+                        <table className="w-full min-w-[2600px] text-left text-sm">
                             <thead className="bg-neutral-50 text-xs text-neutral-500">
                                 <tr>
                                     <th className="px-5 py-4 font-semibold">
@@ -703,10 +729,31 @@ export default function DataRuangan() {
                                         Lantai
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
+                                        Nomor Ruangan
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Kode RFID
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
                                         Kapasitas
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
                                         Luas
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Penanggung Jawab
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Fasilitas
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Deskripsi
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Dibuat
+                                    </th>
+                                    <th className="px-5 py-4 font-semibold">
+                                        Diperbarui
                                     </th>
                                     <th className="px-5 py-4 text-right font-semibold">
                                         Aksi
@@ -759,12 +806,10 @@ export default function DataRuangan() {
                                                         {room.code}
                                                     </p>
                                                     <p className="mt-1 text-[10px] text-neutral-400">
-                                                        No. {room.roomNumber}
-                                                        {' · '}
-                                                        {room.images.length} foto
+                                                        ID: {room.id}
                                                     </p>
                                                     <p className="mt-1 text-[10px] text-neutral-400">
-                                                        RFID: {room.rfidCode}
+                                                        {room.images.length} foto
                                                     </p>
                                                 </div>
                                             </div>
@@ -776,12 +821,47 @@ export default function DataRuangan() {
                                             </span>
                                         </td>
 
-                                        <td className="max-w-48 px-5 py-4 text-xs leading-5 text-neutral-600">
-                                            {getLocationName(room.locationId)}
+                                        <td className="max-w-[360px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            <div className="space-y-1">
+                                                <p className="font-semibold text-neutral-800">
+                                                    {room.location?.code || '-'} · {room.location?.name || getLocationName(room.locationId)}
+                                                </p>
+                                                <p>ID: {room.locationId || '-'}</p>
+                                                <p>Jenis: {room.location?.type || '-'} · Area: {room.location?.area || '-'}</p>
+                                                <p>Alamat: {room.location?.address || '-'}</p>
+                                                <p>Penanggung jawab: {room.location?.responsible || '-'} · Telepon: {room.location?.phone || '-'}</p>
+                                                <p>Deskripsi: {room.location?.description || '-'}</p>
+                                                <p>Dibuat: {room.location?.createdAt || '-'} · Diperbarui: {room.location?.updatedAt || '-'}</p>
+                                                <button
+                                                    type="button"
+                                                    disabled={!room.location?.images.length}
+                                                    onClick={() => {
+                                                        if (room.location?.images.length) {
+                                                            setImagePreview({
+                                                                images: room.location.images,
+                                                                index: 0,
+                                                                entityName: room.location.name,
+                                                            });
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1 rounded-lg bg-neutral-100 px-2 py-1 text-[11px] font-medium text-neutral-600 disabled:cursor-default"
+                                                >
+                                                    <Icon name="image" size={12} />
+                                                    {room.location?.images.length ?? 0} foto lokasi
+                                                </button>
+                                            </div>
                                         </td>
 
                                         <td className="px-5 py-4 text-neutral-700">
                                             {room.floor}
+                                        </td>
+
+                                        <td className="px-5 py-4 text-neutral-700">
+                                            {room.roomNumber}
+                                        </td>
+
+                                        <td className="px-5 py-4 text-xs text-neutral-600">
+                                            {room.rfidCode}
                                         </td>
 
                                         <td className="px-5 py-4 text-neutral-700">
@@ -790,6 +870,26 @@ export default function DataRuangan() {
 
                                         <td className="px-5 py-4 text-neutral-700">
                                             {room.area} m²
+                                        </td>
+
+                                        <td className="whitespace-pre-wrap px-5 py-4 text-xs text-neutral-600">
+                                            {room.responsiblePerson || '-'}
+                                        </td>
+
+                                        <td className="max-w-[240px] whitespace-pre-wrap break-words px-5 py-4 text-xs text-neutral-600">
+                                            {room.facilities.join(', ') || '-'}
+                                        </td>
+
+                                        <td className="max-w-[260px] whitespace-pre-wrap break-words px-5 py-4 text-xs leading-5 text-neutral-600">
+                                            {room.description || '-'}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {room.createdAt || '-'}
+                                        </td>
+
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-neutral-600">
+                                            {room.updatedAt || '-'}
                                         </td>
 
                                         <td className="px-5 py-4">
@@ -852,7 +952,7 @@ export default function DataRuangan() {
                                 {paginatedRooms.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan={7}
+                                            colSpan={14}
                                             className="px-5 py-14 text-center"
                                         >
                                             <Icon

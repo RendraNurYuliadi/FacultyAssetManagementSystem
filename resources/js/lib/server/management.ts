@@ -45,11 +45,69 @@ export async function requireAdmin(): Promise<
     return { user };
 }
 
+export async function requireBorrowingManager(): Promise<
+    | { user: SessionUser; response?: never }
+    | { user?: never; response: NextResponse }
+> {
+    const user = await getSessionUser();
+    if (!user) {
+        return {
+            response: NextResponse.json(
+                { message: 'Sesi tidak valid. Silakan masuk kembali.' },
+                { status: 401 },
+            ),
+        };
+    }
+    if (user.role !== 'admin' && user.role !== 'pengelola') {
+        return {
+            response: NextResponse.json(
+                {
+                    message:
+                        'Akses hanya tersedia untuk pengelola atau administrator.',
+                },
+                { status: 403 },
+            ),
+        };
+    }
+    return { user };
+}
+
+export async function requireClearConfirmation(request: Request) {
+    let payload: unknown;
+    try {
+        payload = await request.json();
+    } catch {
+        return NextResponse.json(
+            { message: 'Konfirmasi penghapusan tidak valid.' },
+            { status: 400 },
+        );
+    }
+
+    if (
+        typeof payload !== 'object' ||
+        payload === null ||
+        !('confirmation' in payload) ||
+        payload.confirmation !== 'HAPUS'
+    ) {
+        return NextResponse.json(
+            { message: 'Ketik HAPUS untuk mengonfirmasi penghapusan.' },
+            { status: 422 },
+        );
+    }
+    return null;
+}
+
 export class InvalidManagementImageError extends Error {}
 
 export async function storeManagementImage(
     file: File,
-    category: 'users' | 'organizations' | 'locations' | 'rooms' | 'items',
+    category:
+        | 'users'
+        | 'organizations'
+        | 'locations'
+        | 'rooms'
+        | 'items'
+        | 'returns',
 ) {
     if (file.size < 1 || file.size > maxImageSize) {
         throw new InvalidManagementImageError(
@@ -64,7 +122,13 @@ export async function storeManagementImage(
 export async function storeManagementImageBuffer(
     contents: Buffer,
     mime: string,
-    category: 'users' | 'organizations' | 'locations' | 'rooms' | 'items',
+    category:
+        | 'users'
+        | 'organizations'
+        | 'locations'
+        | 'rooms'
+        | 'items'
+        | 'returns',
 ) {
     const type = imageTypes[mime as keyof typeof imageTypes];
     if (!type || contents.length < 1 || contents.length > maxImageSize) {
@@ -95,7 +159,7 @@ export async function removeManagementImage(value: unknown) {
     }
 
     const relativePath = value.slice(publicImageRoot.length);
-    if (!/^(users|organizations|locations|rooms|items)\/[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(relativePath)) {
+    if (!/^(users|organizations|locations|rooms|items|returns)\/[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(relativePath)) {
         return;
     }
 

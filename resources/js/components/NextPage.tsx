@@ -18,7 +18,6 @@ import AssetCatalog from '../pages/dashboard/aset/katalog';
 import AssetRooms from '../pages/dashboard/aset/ruangan';
 import AssetLocations from '../pages/dashboard/aset/lokasi';
 import Borrowing from '../pages/dashboard/peminjaman/index';
-import BorrowingRequest from '../pages/dashboard/peminjaman/pengajuan';
 import BorrowingApproval from '../pages/dashboard/peminjaman/persetujuan';
 import Returns from '../pages/dashboard/pengembalian/index';
 import ReturnInspection from '../pages/dashboard/pengembalian/pemeriksaan';
@@ -57,7 +56,6 @@ const pages: Record<string, ComponentType<PageProps>> = {
     '/dashboard/aset/ruangan': AssetRooms,
     '/dashboard/aset/lokasi': AssetLocations,
     '/dashboard/peminjaman': () => <Borrowing />,
-    '/dashboard/peminjaman/pengajuan': BorrowingRequest,
     '/dashboard/peminjaman/persetujuan': BorrowingApproval,
     '/dashboard/pengembalian': Returns,
     '/dashboard/pengembalian/pemeriksaan': ReturnInspection,

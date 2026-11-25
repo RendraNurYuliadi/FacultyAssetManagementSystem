@@ -1,148 +1,93 @@
-import { useMemo, useState } from 'react';
-import DashboardLayout from '../../../components/layouts/DashboardLayout';
-import Icon from '../../../components/Icon';
-import type { IconName } from '../../../components/Icon';
-import AssetManagementBanner from '../../../components/dashboard/AssetManagementBanner';
-import DashboardMetricCard from '../../../components/dashboard/DashboardMetricCard';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import DashboardLayout from '@/components/layouts/DashboardLayout';
+import Icon from '@/components/Icon';
+import AssetManagementBanner from '@/components/dashboard/AssetManagementBanner';
+import DashboardMetricCard from '@/components/dashboard/DashboardMetricCard';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '@/lib/management-client';
 
+type ApprovalDecision = 'Disetujui' | 'Tidak Disetujui';
 type ApprovalStatus =
+    | ApprovalDecision
     | 'Menunggu Persetujuan'
-    | 'Disetujui'
-    | 'Ditolak'
-    | 'Perlu Revisi';
-
-type LoanRequest = {
-    id: number;
+    | 'Dibatalkan';
+type BorrowingAsset = {
+    id: string;
     code: string;
-    borrower: string;
-    identityNumber: string;
-    borrowerType: string;
-    faculty: string;
-    organization?: string;
-    assetName: string;
-    assetCode: string;
+    name: string;
+    type: 'Barang' | 'Ruangan';
+    image: string;
+    location: string;
+    condition: string;
+    availableQuantity: number;
+    summary: string;
     quantity: number;
-    purpose: string;
-    borrowingDate: string;
-    returnDate: string;
-    submittedAt: string;
-    status: ApprovalStatus;
-    note: string;
 };
 
-const initialRequests: LoanRequest[] = [
-    {
-        id: 1,
-        code: 'PJM-2026-001',
-        borrower: 'Andi Saputra',
-        identityNumber: '240160121101',
-        borrowerType: 'Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        assetName: 'Laptop Lenovo ThinkPad',
-        assetCode: 'FAMS-BRG-001',
-        quantity: 2,
-        purpose: 'Kegiatan praktikum dan penyusunan tugas akhir.',
-        borrowingDate: '2026-11-15',
-        returnDate: '2026-11-18',
-        submittedAt: '2026-11-12',
-        status: 'Menunggu Persetujuan',
-        note: '',
-    },
-    {
-        id: 2,
-        code: 'PJM-2026-002',
-        borrower: 'Siti Nurhaliza',
-        identityNumber: '240160121115',
-        borrowerType: 'Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        organization: 'UKM TahuNgoding',
-        assetName: 'Proyektor Epson',
-        assetCode: 'FAMS-BRG-002',
-        quantity: 1,
-        purpose: 'Kegiatan seminar dan pelatihan anggota.',
-        borrowingDate: '2026-11-16',
-        returnDate: '2026-11-16',
-        submittedAt: '2026-11-12',
-        status: 'Menunggu Persetujuan',
-        note: '',
-    },
-    {
-        id: 3,
-        code: 'PJM-2026-003',
-        borrower: 'Budi Setiawan',
-        identityNumber: '240160121120',
-        borrowerType: 'Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        assetName: 'Kamera DSLR',
-        assetCode: 'FAMS-BRG-008',
-        quantity: 1,
-        purpose: 'Dokumentasi kegiatan fakultas.',
-        borrowingDate: '2026-11-14',
-        returnDate: '2026-11-15',
-        submittedAt: '2026-11-11',
-        status: 'Disetujui',
-        note: 'Pastikan kelengkapan kamera saat pengambilan.',
-    },
-    {
-        id: 4,
-        code: 'PJM-2026-004',
-        borrower: 'Dewi Anggraini',
-        identityNumber: '240160121125',
-        borrowerType: 'Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        assetName: 'Speaker Portable',
-        assetCode: 'FAMS-BRG-010',
-        quantity: 2,
-        purpose: 'Acara internal organisasi mahasiswa.',
-        borrowingDate: '2026-11-17',
-        returnDate: '2026-11-17',
-        submittedAt: '2026-11-10',
-        status: 'Perlu Revisi',
-        note: 'Mohon lengkapi detail kegiatan dan penanggung jawab.',
-    },
-    {
-        id: 5,
-        code: 'PJM-2026-005',
-        borrower: 'Rizky Firmansyah',
-        identityNumber: '240160121130',
-        borrowerType: 'Mahasiswa',
-        faculty: 'Fakultas Teknologi Informasi',
-        assetName: 'Proyektor Epson',
-        assetCode: 'FAMS-BRG-002',
-        quantity: 3,
-        purpose: 'Peminjaman untuk kegiatan kelas.',
-        borrowingDate: '2026-11-13',
-        returnDate: '2026-11-14',
-        submittedAt: '2026-11-09',
-        status: 'Ditolak',
-        note: 'Jumlah aset yang diminta tidak tersedia.',
-    },
-];
+type LoanRequest = {
+    id: string;
+    code: string;
+    borrower: string;
+    identity: string;
+    borrowerType: string;
+    phone: string;
+    email: string;
+    faculty: string;
+    studyProgram: string;
+    position: string;
+    address: string;
+    organization: string;
+    borrowingCategory: string;
+    assets: BorrowingAsset[];
+    asset: string;
+    assetType: 'Barang' | 'Ruangan' | 'Campuran';
+    quantity: number;
+    purpose: string;
+    usageLocation: string;
+    participantCount: string;
+    borrowDate: string;
+    startTime: string;
+    endDate: string;
+    endTime: string;
+    returnDate: string;
+    submittedAt: string;
+    reviewedAt?: string;
+    approvalStatus: ApprovalStatus;
+    activityName: string;
+    activityPosition: string;
+    responsiblePerson: string;
+    responsiblePhone: string;
+    notes: string;
+    documents: Record<string, string>;
+};
 
 const PER_PAGE = 5;
-
 const inputClass =
     'w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-3 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-500 focus:ring-2 focus:ring-neutral-100';
 
-const statusStyles: Record<ApprovalStatus, string> = {
-    'Menunggu Persetujuan':
-        'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-    Disetujui: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-    Ditolak: 'bg-red-50 text-red-700 ring-1 ring-red-200',
-    'Perlu Revisi': 'bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200',
-};
-
 const formatDate = (value: string) =>
-    new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    });
+    value
+        ? new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+          })
+        : '-';
 
-function StatusBadge({ status }: { status: ApprovalStatus }) {
+function StatusBadge({ status }: { status: LoanRequest['approvalStatus'] }) {
     return (
         <span
-            className={`inline-flex whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium ${statusStyles[status]}`}
+            className={`inline-flex whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 ${
+                status === 'Menunggu Persetujuan'
+                    ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                    : status === 'Disetujui'
+                      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                      : status === 'Tidak Disetujui'
+                        ? 'bg-red-50 text-red-700 ring-red-200'
+                        : 'bg-gray-50 text-gray-600 ring-gray-200'
+            }`}
         >
             {status}
         </span>
@@ -160,158 +105,185 @@ function Field({
         <div className="space-y-1.5">
             <p className="text-xs font-semibold text-neutral-500">{label}</p>
             <div className="text-sm font-medium text-neutral-900">
-                {children}
+                {children || '-'}
             </div>
         </div>
     );
 }
 
+function assetDescription(request: LoanRequest) {
+    return (
+        request.assets
+            ?.map(
+                (asset) =>
+                    `${asset.name} (${asset.quantity} ${
+                        asset.type === 'Barang' ? 'unit' : 'ruangan'
+                    })`,
+            )
+            .join(', ') || request.asset
+    );
+}
+
 export default function PersetujuanPeminjaman() {
-    const [requests, setRequests] =
-        useState<LoanRequest[]>(initialRequests);
+    const [requests, setRequests] = useState<LoanRequest[]>([]);
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('Semua');
+    const [statusFilter, setStatusFilter] = useState('Semua Status');
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedRequest, setSelectedRequest] =
         useState<LoanRequest | null>(null);
-    const [actionType, setActionType] = useState<
-        'Disetujui' | 'Ditolak' | 'Perlu Revisi' | null
-    >(null);
-    const [actionNote, setActionNote] = useState('');
+    const [actionType, setActionType] = useState<ApprovalDecision | null>(
+        null,
+    );
+    const [dataLoading, setDataLoading] = useState(true);
+    const [savingDecision, setSavingDecision] = useState(false);
+    const [error, setError] = useState('');
+    const [actionError, setActionError] = useState('');
+    const [notice, setNotice] = useState('');
+    const [reloadKey, setReloadKey] = useState(0);
 
-    const stats: {
-        label: string;
-        value: number;
-        icon: IconName;
-    }[] = [
-        {
-            label: 'Total Pengajuan',
-            value: requests.length,
-            icon: 'package',
-        },
-        {
-            label: 'Menunggu Persetujuan',
-            value: requests.filter(
-                (item) => item.status === 'Menunggu Persetujuan',
-            ).length,
-            icon: 'alert-circle',
-        },
-        {
-            label: 'Disetujui',
-            value: requests.filter((item) => item.status === 'Disetujui')
-                .length,
-            icon: 'box',
-        },
-        {
-            label: 'Perlu Tindak Lanjut',
-            value: requests.filter(
-                (item) =>
-                    item.status === 'Ditolak' ||
-                    item.status === 'Perlu Revisi',
-            ).length,
-            icon: 'building',
-        },
-    ];
+    useEffect(() => {
+        let active = true;
+        managementRequest<{ borrowings: LoanRequest[] }>(
+            '/api/borrowings/approval',
+        )
+            .then((response) => {
+                if (!Array.isArray(response.borrowings)) {
+                    throw new Error('Data persetujuan peminjaman tidak valid.');
+                }
+                if (active) {
+                    setRequests(response.borrowings);
+                    setError('');
+                }
+            })
+            .catch((requestError: unknown) => {
+                if (active) setError(managementErrorMessage(requestError));
+            })
+            .finally(() => {
+                if (active) setDataLoading(false);
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [reloadKey]);
 
     const filteredRequests = useMemo(() => {
         const keyword = search.toLowerCase().trim();
-
-        return requests.filter((item) => {
-            const matchesSearch =
-                item.code.toLowerCase().includes(keyword) ||
-                item.borrower.toLowerCase().includes(keyword) ||
-                item.identityNumber.toLowerCase().includes(keyword) ||
-                item.assetName.toLowerCase().includes(keyword);
-
-            const matchesStatus =
-                statusFilter === 'Semua' || item.status === statusFilter;
-
-            return matchesSearch && matchesStatus;
-        });
+        return requests.filter(
+            (request) =>
+                (statusFilter === 'Semua Status' ||
+                    request.approvalStatus === statusFilter) &&
+                (request.code.toLowerCase().includes(keyword) ||
+                    request.borrower.toLowerCase().includes(keyword) ||
+                    request.identity.toLowerCase().includes(keyword) ||
+                    assetDescription(request).toLowerCase().includes(keyword)),
+        );
     }, [requests, search, statusFilter]);
 
     const totalPages = Math.max(
         1,
         Math.ceil(filteredRequests.length / PER_PAGE),
     );
-
     const safeCurrentPage = Math.min(currentPage, totalPages);
-
     const paginatedRequests = filteredRequests.slice(
         (safeCurrentPage - 1) * PER_PAGE,
         safeCurrentPage * PER_PAGE,
     );
+    const pendingRequests = requests.filter(
+        (request) => request.approvalStatus === 'Menunggu Persetujuan',
+    );
+    const pendingAssetQuantity = pendingRequests.reduce(
+        (total, request) => total + request.quantity,
+        0,
+    );
 
     function openAction(
         request: LoanRequest,
-        action: 'Disetujui' | 'Ditolak' | 'Perlu Revisi',
+        action: ApprovalDecision,
     ) {
         setSelectedRequest(request);
         setActionType(action);
-        setActionNote('');
-    }
-
-    function submitAction(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-
-        if (!selectedRequest || !actionType) return;
-
-        if (
-            (actionType === 'Ditolak' || actionType === 'Perlu Revisi') &&
-            !actionNote.trim()
-        ) {
-            alert('Alasan atau catatan wajib diisi.');
-            return;
-        }
-
-        setRequests((previous) =>
-            previous.map((item) =>
-                item.id === selectedRequest.id
-                    ? {
-                          ...item,
-                          status: actionType,
-                          note: actionNote.trim(),
-                      }
-                    : item,
-            ),
-        );
-
-        setSelectedRequest(null);
-        setActionType(null);
-        setActionNote('');
+        setActionError('');
     }
 
     function closeDetail() {
         setSelectedRequest(null);
         setActionType(null);
-        setActionNote('');
+        setActionError('');
     }
+
+    async function submitAction(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!selectedRequest || !actionType) return;
+
+        setSavingDecision(true);
+        setActionError('');
+        try {
+            await managementRequest<{ borrowing: LoanRequest }>(
+                `/api/borrowings/${encodeURIComponent(selectedRequest.id)}`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ approvalStatus: actionType }),
+                },
+            );
+            setRequests((previous) =>
+                previous.map((item) =>
+                    item.id === selectedRequest.id
+                        ? { ...item, approvalStatus: actionType }
+                        : item,
+                ),
+            );
+            setDataLoading(true);
+            setReloadKey((key) => key + 1);
+            setNotice(
+                actionType === 'Disetujui'
+                    ? 'Pengajuan berhasil disetujui.'
+                    : 'Pengajuan berhasil ditolak.',
+            );
+            setSelectedRequest(null);
+            setActionType(null);
+        } catch (requestError: unknown) {
+            setActionError(managementErrorMessage(requestError));
+        } finally {
+            setSavingDecision(false);
+        }
+    }
+
+    const metrics = [
+        {
+            label: 'Menunggu Persetujuan',
+            value: pendingRequests.length,
+            icon: 'clock' as const,
+        },
+        {
+            label: 'Jumlah Aset Menunggu',
+            value: pendingAssetQuantity,
+            icon: 'package' as const,
+        },
+    ];
 
     return (
         <DashboardLayout>
             <div className="w-full min-w-0 space-y-6">
                 <AssetManagementBanner
                     title="Persetujuan Peminjaman."
-                    description="Periksa permohonan peminjaman aset, verifikasi informasi peminjam, dan tentukan keputusan persetujuan."
+                    description="Tinjau pengajuan dari peminjam, lalu setujui atau tolak permohonan."
                     contextLabel="Administrasi peminjaman"
                     icon="clipboard-check"
-                    statusLabel="Pengajuan peminjaman"
+                    statusLabel="Data seluruh pengguna terpantau"
                     metrics={[
                         {
                             label: 'Menunggu keputusan',
-                            value: requests.filter(
-                                (item) =>
-                                    item.status === 'Menunggu Persetujuan',
-                            ).length,
+                            value: pendingRequests.length,
                         },
                         {
-                            label: 'Total pengajuan',
-                            value: requests.length,
+                            label: 'Aset menunggu persetujuan',
+                            value: pendingAssetQuantity,
                         },
                     ]}
                 />
 
-                {/* PAGE HEADING */}
                 <div>
                     <div className="mb-2 flex items-center gap-2 text-xs text-neutral-400">
                         <span>Manajemen Peminjaman</span>
@@ -320,43 +292,76 @@ export default function PersetujuanPeminjaman() {
                             Persetujuan Peminjaman
                         </span>
                     </div>
-
                     <h1 className="text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
                         Persetujuan Peminjaman
                     </h1>
-
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
-                        Kelola pengajuan peminjaman yang masuk. Periksa detail
-                        permohonan sebelum memberikan keputusan.
+                        Seluruh pengajuan dari semua peminjam ditampilkan dalam
+                        satu daftar. Pengajuan yang menunggu keputusan dapat
+                        disetujui atau ditolak.
                     </p>
                 </div>
 
-                {/* STATISTICS */}
-                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                    {stats.map((stat, index) => (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {metrics.map((metric, index) => (
                         <DashboardMetricCard
-                            key={stat.label}
-                            label={stat.label}
-                            value={stat.value}
-                            icon={stat.icon}
+                            key={metric.label}
+                            label={metric.label}
+                            value={metric.value}
+                            icon={metric.icon}
                             index={index}
                         />
                     ))}
                 </div>
 
-                {/* REQUEST TABLE */}
+                {notice && (
+                    <div
+                        role="status"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"
+                    >
+                        {notice}
+                        <button
+                            type="button"
+                            onClick={() => setNotice('')}
+                            aria-label="Tutup notifikasi"
+                        >
+                            <Icon name="x" size={16} />
+                        </button>
+                    </div>
+                )}
+
+                {error && (
+                    <div
+                        role="alert"
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-white p-4 text-sm text-neutral-700"
+                    >
+                        <span>Daftar pengajuan gagal dimuat: {error}</span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDataLoading(true);
+                                setError('');
+                                setReloadKey((key) => key + 1);
+                            }}
+                            className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-medium hover:bg-neutral-50"
+                        >
+                            Coba lagi
+                        </button>
+                    </div>
+                )}
+
                 <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
                     <div className="flex flex-col gap-4 border-b border-neutral-100 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <h2 className="font-bold text-neutral-900">
-                                Daftar Pengajuan
+                                Data Peminjaman
                             </h2>
                             <p className="mt-1 text-xs text-neutral-500">
-                                Periksa dan proses permohonan peminjaman aset.
+                                {requests.length} data peminjaman,{' '}
+                                {pendingRequests.length} menunggu keputusan.
                             </p>
                         </div>
-
-                        <div className="flex flex-col gap-2 sm:flex-row">
+                        <div className="flex flex-col gap-3 sm:flex-row">
                             <div className="relative">
                                 <span className="absolute top-1/2 left-3 -translate-y-1/2 text-neutral-400">
                                     <Icon name="search" size={16} />
@@ -368,25 +373,22 @@ export default function PersetujuanPeminjaman() {
                                         setCurrentPage(1);
                                     }}
                                     placeholder="Cari peminjam, kode, aset..."
-                                    className={`${inputClass} pl-9 sm:w-64`}
+                                    className={`${inputClass} pl-9 sm:w-80`}
                                 />
                             </div>
-
                             <select
                                 value={statusFilter}
                                 onChange={(event) => {
                                     setStatusFilter(event.target.value);
                                     setCurrentPage(1);
                                 }}
-                                className={inputClass}
+                                className={`${inputClass} sm:w-56`}
                             >
-                                <option value="Semua">Semua Status</option>
-                                <option value="Menunggu Persetujuan">
-                                    Menunggu Persetujuan
-                                </option>
-                                <option value="Disetujui">Disetujui</option>
-                                <option value="Ditolak">Ditolak</option>
-                                <option value="Perlu Revisi">Perlu Revisi</option>
+                                <option>Semua Status</option>
+                                <option>Menunggu Persetujuan</option>
+                                <option>Disetujui</option>
+                                <option>Tidak Disetujui</option>
+                                <option>Dibatalkan</option>
                             </select>
                         </div>
                     </div>
@@ -411,14 +413,13 @@ export default function PersetujuanPeminjaman() {
                                         Tanggal Pengembalian
                                     </th>
                                     <th className="px-5 py-4 font-semibold">
-                                        Status
+                                        Status Persetujuan
                                     </th>
                                     <th className="px-5 py-4 text-right font-semibold">
                                         Aksi
                                     </th>
                                 </tr>
                             </thead>
-
                             <tbody className="divide-y divide-neutral-100">
                                 {paginatedRequests.map((request) => (
                                     <tr
@@ -434,40 +435,33 @@ export default function PersetujuanPeminjaman() {
                                                 {formatDate(request.submittedAt)}
                                             </p>
                                         </td>
-
                                         <td className="px-5 py-4">
                                             <p className="font-semibold text-neutral-900">
                                                 {request.borrower}
                                             </p>
                                             <p className="mt-1 text-xs text-neutral-400">
-                                                {request.identityNumber}
+                                                {request.identity}
                                             </p>
                                         </td>
-
-                                        <td className="px-5 py-4">
+                                        <td className="max-w-72 px-5 py-4">
                                             <p className="font-medium text-neutral-800">
-                                                {request.assetName}
+                                                {assetDescription(request)}
                                             </p>
                                             <p className="mt-1 text-xs text-neutral-400">
-                                                {request.quantity} unit ·{' '}
-                                                {request.assetCode}
+                                                {request.quantity} aset
                                             </p>
                                         </td>
-
                                         <td className="px-5 py-4 text-xs text-neutral-600">
-                                            {formatDate(request.borrowingDate)}
+                                            {formatDate(request.borrowDate)}
                                         </td>
-
                                         <td className="px-5 py-4 text-xs text-neutral-600">
                                             {formatDate(request.returnDate)}
                                         </td>
-
                                         <td className="px-5 py-4">
                                             <StatusBadge
-                                                status={request.status}
+                                                status={request.approvalStatus}
                                             />
                                         </td>
-
                                         <td className="px-5 py-4">
                                             <div className="flex justify-end gap-1">
                                                 <button
@@ -480,13 +474,9 @@ export default function PersetujuanPeminjaman() {
                                                     }
                                                     className="rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
                                                 >
-                                                    <Icon
-                                                        name="eye"
-                                                        size={16}
-                                                    />
+                                                    <Icon name="eye" size={16} />
                                                 </button>
-
-                                                {request.status ===
+                                                {request.approvalStatus ===
                                                     'Menunggu Persetujuan' && (
                                                     <>
                                                         <button
@@ -505,14 +495,13 @@ export default function PersetujuanPeminjaman() {
                                                                 size={16}
                                                             />
                                                         </button>
-
                                                         <button
                                                             type="button"
                                                             title="Tolak"
                                                             onClick={() =>
                                                                 openAction(
                                                                     request,
-                                                                    'Ditolak',
+                                                                    'Tidak Disetujui',
                                                                 )
                                                             }
                                                             className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
@@ -522,60 +511,56 @@ export default function PersetujuanPeminjaman() {
                                                                 size={16}
                                                             />
                                                         </button>
-
-                                                        <button
-                                                            type="button"
-                                                            title="Minta revisi"
-                                                            onClick={() =>
-                                                                openAction(
-                                                                    request,
-                                                                    'Perlu Revisi',
-                                                                )
-                                                            }
-                                                            className="rounded-lg p-2 text-neutral-600 transition hover:bg-neutral-100"
-                                                        >
-                                                            <Icon
-                                                                name="message"
-                                                                size={16}
-                                                            />
-                                                        </button>
                                                     </>
                                                 )}
                                             </div>
                                         </td>
                                     </tr>
                                 ))}
-
-                                {paginatedRequests.length === 0 && (
+                                {dataLoading && (
                                     <tr>
                                         <td
                                             colSpan={7}
-                                            className="px-5 py-14 text-center"
+                                            className="px-5 py-14 text-center text-sm text-neutral-500"
                                         >
-                                            <Icon
-                                                name="clipboard-list"
-                                                size={30}
-                                                className="mx-auto mb-3 text-neutral-300"
-                                            />
-                                            <p className="font-semibold text-neutral-700">
-                                                Pengajuan tidak ditemukan
-                                            </p>
-                                            <p className="mt-1 text-xs text-neutral-400">
-                                                Coba ubah kata kunci atau filter
-                                                pencarian.
-                                            </p>
+                                            Memuat pengajuan...
                                         </td>
                                     </tr>
                                 )}
+                                {!dataLoading &&
+                                    !error &&
+                                    paginatedRequests.length === 0 && (
+                                        <tr>
+                                            <td
+                                                colSpan={7}
+                                                className="px-5 py-14 text-center"
+                                            >
+                                                <Icon
+                                                    name="clipboard-list"
+                                                    size={30}
+                                                    className="mx-auto mb-3 text-neutral-300"
+                                                />
+                                                <p className="font-semibold text-neutral-700">
+                                                    {requests.length
+                                                        ? 'Pengajuan tidak ditemukan'
+                                                        : 'Belum ada data peminjaman'}
+                                                </p>
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    {requests.length
+                                                        ? 'Coba ubah kata kunci pencarian.'
+                                                        : 'Pengajuan peminjaman dari semua pengguna akan muncul di sini.'}
+                                                </p>
+                                            </td>
+                                        </tr>
+                                    )}
                             </tbody>
                         </table>
                     </div>
 
-                    {/* PAGINATION */}
                     <div className="flex flex-col gap-3 border-t border-neutral-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-xs text-neutral-500">
                             Menampilkan{' '}
-                            {filteredRequests.length > 0
+                            {filteredRequests.length
                                 ? (safeCurrentPage - 1) * PER_PAGE + 1
                                 : 0}{' '}
                             -{' '}
@@ -585,7 +570,6 @@ export default function PersetujuanPeminjaman() {
                             )}{' '}
                             dari {filteredRequests.length} pengajuan
                         </p>
-
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
@@ -599,11 +583,9 @@ export default function PersetujuanPeminjaman() {
                             >
                                 Sebelumnya
                             </button>
-
                             <span className="text-xs text-neutral-500">
                                 {safeCurrentPage} / {totalPages}
                             </span>
-
                             <button
                                 type="button"
                                 disabled={safeCurrentPage >= totalPages}
@@ -620,20 +602,13 @@ export default function PersetujuanPeminjaman() {
                     </div>
                 </section>
 
-                <p className="text-xs text-neutral-400">
-                    Data saat ini merupakan ilustrasi frontend dan belum
-                    tersimpan ke database.
-                </p>
             </div>
 
-            {/* DETAIL MODAL */}
             {selectedRequest && !actionType && (
                 <div
                     className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6"
                     onMouseDown={(event) => {
-                        if (event.target === event.currentTarget) {
-                            closeDetail();
-                        }
+                        if (event.target === event.currentTarget) closeDetail();
                     }}
                 >
                     <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -650,11 +625,11 @@ export default function PersetujuanPeminjaman() {
                                 type="button"
                                 onClick={closeDetail}
                                 className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100"
+                                aria-label="Tutup detail"
                             >
                                 <Icon name="x" size={20} />
                             </button>
                         </div>
-
                         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5 sm:p-7">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
@@ -663,20 +638,13 @@ export default function PersetujuanPeminjaman() {
                                     </p>
                                     <div className="mt-2">
                                         <StatusBadge
-                                            status={selectedRequest.status}
+                                            status={selectedRequest.approvalStatus}
                                         />
                                     </div>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-xs text-neutral-500">
-                                        Tanggal pengajuan
-                                    </p>
-                                    <p className="mt-1 text-sm font-semibold text-neutral-900">
-                                        {formatDate(
-                                            selectedRequest.submittedAt,
-                                        )}
-                                    </p>
-                                </div>
+                                <Field label="Tanggal pengajuan">
+                                    {formatDate(selectedRequest.submittedAt)}
+                                </Field>
                             </div>
 
                             <section className="space-y-4">
@@ -688,117 +656,232 @@ export default function PersetujuanPeminjaman() {
                                         {selectedRequest.borrower}
                                     </Field>
                                     <Field label="Nomor identitas">
-                                        {selectedRequest.identityNumber}
+                                        {selectedRequest.identity}
                                     </Field>
                                     <Field label="Jenis peminjam">
                                         {selectedRequest.borrowerType}
                                     </Field>
+                                    <Field label="Nomor HP">
+                                        {selectedRequest.phone}
+                                    </Field>
+                                    <Field label="Email">
+                                        {selectedRequest.email}
+                                    </Field>
                                     <Field label="Fakultas">
                                         {selectedRequest.faculty}
                                     </Field>
-                                    {selectedRequest.organization && (
-                                        <Field label="Organisasi">
-                                            {selectedRequest.organization}
-                                        </Field>
+                                    <Field label="Program studi / jabatan">
+                                        {selectedRequest.studyProgram}
+                                    </Field>
+                                    <Field label="Jabatan">
+                                        {selectedRequest.position}
+                                    </Field>
+                                    <Field label="Organisasi">
+                                        {selectedRequest.organization}
+                                    </Field>
+                                    <Field label="Alamat">
+                                        {selectedRequest.address}
+                                    </Field>
+                                </div>
+                            </section>
+
+                            <section className="space-y-4">
+                                <h3 className="border-b border-neutral-100 pb-2 text-sm font-bold text-neutral-900">
+                                    Aset yang Diajukan
+                                </h3>
+                                <div className="space-y-3">
+                                    {selectedRequest.assets.map((asset) => (
+                                        <div
+                                            key={asset.id}
+                                            className="flex items-center justify-between gap-3 rounded-xl border border-neutral-100 p-3"
+                                        >
+                                            <div>
+                                                <p className="text-sm font-semibold text-neutral-900">
+                                                    {asset.name}
+                                                </p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    {asset.code} · {asset.type}
+                                                    {asset.location
+                                                        ? ` · ${asset.location}`
+                                                        : ''}
+                                                </p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    Kondisi: {asset.condition}
+                                                </p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    Ketersediaan saat pengajuan:{' '}
+                                                    {asset.availableQuantity}
+                                                </p>
+                                                {asset.summary && (
+                                                    <p className="mt-1 text-xs leading-5 text-neutral-500">
+                                                        {asset.summary}
+                                                    </p>
+                                                )}
+                                                {asset.image && (
+                                                    <a
+                                                        href={asset.image}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="mt-1 inline-block text-xs font-medium text-neutral-600 underline"
+                                                    >
+                                                        Lihat foto aset
+                                                    </a>
+                                                )}
+                                            </div>
+                                            <span className="whitespace-nowrap text-xs font-medium text-neutral-600">
+                                                {asset.quantity}{' '}
+                                                {asset.type === 'Barang'
+                                                    ? 'unit'
+                                                    : 'ruangan'}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    {!selectedRequest.assets.length && (
+                                        <p className="text-sm text-neutral-700">
+                                            {selectedRequest.asset}
+                                        </p>
                                     )}
                                 </div>
-                            </section>
-
-                            <section className="space-y-4">
-                                <h3 className="border-b border-neutral-100 pb-2 text-sm font-bold text-neutral-900">
-                                    Detail Aset
-                                </h3>
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    <Field label="Nama aset">
-                                        {selectedRequest.assetName}
+                                    <Field label="Tipe aset">
+                                        {selectedRequest.assetType}
                                     </Field>
-                                    <Field label="Kode aset">
-                                        {selectedRequest.assetCode}
-                                    </Field>
-                                    <Field label="Jumlah">
-                                        {selectedRequest.quantity} unit
+                                    <Field label="Jumlah total">
+                                        {selectedRequest.quantity}
                                     </Field>
                                 </div>
                             </section>
 
                             <section className="space-y-4">
                                 <h3 className="border-b border-neutral-100 pb-2 text-sm font-bold text-neutral-900">
-                                    Jadwal dan Keperluan
+                                    Kegiatan dan Jadwal
                                 </h3>
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    <Field label="Tanggal peminjaman">
-                                        {formatDate(
-                                            selectedRequest.borrowingDate,
-                                        )}
+                                    <Field label="Nama kegiatan">
+                                        {selectedRequest.activityName}
                                     </Field>
-                                    <Field label="Tanggal pengembalian">
-                                        {formatDate(
-                                            selectedRequest.returnDate,
-                                        )}
+                                    <Field label="Kategori peminjaman">
+                                        {selectedRequest.borrowingCategory}
                                     </Field>
+                                    <Field label="Jabatan dalam kegiatan">
+                                        {selectedRequest.activityPosition}
+                                    </Field>
+                                    <Field label="Penanggung jawab">
+                                        {selectedRequest.responsiblePerson}
+                                    </Field>
+                                    <Field label="Nomor penanggung jawab">
+                                        {selectedRequest.responsiblePhone}
+                                    </Field>
+                                    <Field label="Tanggal mulai">
+                                        {formatDate(
+                                            selectedRequest.borrowDate,
+                                        )}{' '}
+                                        {selectedRequest.startTime}
+                                    </Field>
+                                    <Field label="Tanggal selesai">
+                                        {formatDate(selectedRequest.endDate)}{' '}
+                                        {selectedRequest.endTime}
+                                    </Field>
+                                    <Field label="Jumlah peserta">
+                                        {selectedRequest.participantCount}
+                                    </Field>
+                                    <Field label="Rencana pengembalian">
+                                        {formatDate(selectedRequest.returnDate)}
+                                    </Field>
+                                    <Field label="Lokasi penggunaan">
+                                        {selectedRequest.usageLocation}
+                                    </Field>
+                                    {selectedRequest.reviewedAt && (
+                                        <Field label="Tanggal keputusan">
+                                            {formatDate(
+                                                selectedRequest.reviewedAt,
+                                            )}
+                                        </Field>
+                                    )}
                                 </div>
                                 <Field label="Tujuan peminjaman">
                                     <p className="leading-6 font-normal text-neutral-700">
                                         {selectedRequest.purpose}
                                     </p>
                                 </Field>
+                                <Field label="Catatan tambahan">
+                                    <p className="leading-6 font-normal text-neutral-700">
+                                        {selectedRequest.notes}
+                                    </p>
+                                </Field>
                             </section>
 
-                            {selectedRequest.note && (
-                                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                                    <p className="text-xs font-semibold text-neutral-600">
-                                        Catatan pengelola
-                                    </p>
-                                    <p className="mt-1 text-sm leading-6 text-neutral-700">
-                                        {selectedRequest.note}
-                                    </p>
-                                </div>
+                            {Object.entries(selectedRequest.documents).length >
+                                0 && (
+                                <section className="space-y-3">
+                                    <h3 className="border-b border-neutral-100 pb-2 text-sm font-bold text-neutral-900">
+                                        Dokumen Pendukung
+                                    </h3>
+                                    <div className="flex flex-wrap gap-2">
+                                        {Object.entries(
+                                            selectedRequest.documents,
+                                        ).map(([name, path]) => (
+                                            <a
+                                                key={name}
+                                                href={path}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                                            >
+                                                <Icon
+                                                    name="file-text"
+                                                    size={14}
+                                                />
+                                                {name}
+                                            </a>
+                                        ))}
+                                    </div>
+                                </section>
                             )}
                         </div>
-
-                        {selectedRequest.status ===
-                            'Menunggu Persetujuan' && (
-                            <div className="flex flex-col gap-2 border-t border-neutral-100 p-5 sm:flex-row sm:justify-end sm:px-7">
+                        <div className="flex flex-col gap-2 border-t border-neutral-100 p-5 sm:flex-row sm:justify-end sm:px-7">
+                            {selectedRequest.approvalStatus ===
+                                'Menunggu Persetujuan' ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            openAction(
+                                                selectedRequest,
+                                                'Tidak Disetujui',
+                                            )
+                                        }
+                                        className="rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+                                    >
+                                        Tolak
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            openAction(
+                                                selectedRequest,
+                                                'Disetujui',
+                                            )
+                                        }
+                                        className="rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                                    >
+                                        Setujui Pengajuan
+                                    </button>
+                                </>
+                            ) : (
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        openAction(
-                                            selectedRequest,
-                                            'Perlu Revisi',
-                                        )
-                                    }
-                                    className="rounded-xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
-                                >
-                                    Minta Revisi
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        openAction(selectedRequest, 'Ditolak')
-                                    }
-                                    className="rounded-xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
-                                >
-                                    Tolak Pengajuan
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        openAction(
-                                            selectedRequest,
-                                            'Disetujui',
-                                        )
-                                    }
+                                    onClick={closeDetail}
                                     className="rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
                                 >
-                                    Setujui Pengajuan
+                                    Tutup
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* APPROVAL ACTION MODAL */}
             {selectedRequest && actionType && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm">
                     <form
@@ -809,83 +892,60 @@ export default function PersetujuanPeminjaman() {
                             <h2 className="text-lg font-bold text-neutral-950">
                                 {actionType === 'Disetujui'
                                     ? 'Setujui Pengajuan?'
-                                    : actionType === 'Ditolak'
-                                      ? 'Tolak Pengajuan?'
-                                      : 'Minta Revisi Pengajuan'}
+                                    : 'Tolak Pengajuan?'}
                             </h2>
                             <p className="mt-1 text-xs text-neutral-500">
                                 {selectedRequest.code} ·{' '}
                                 {selectedRequest.borrower}
                             </p>
                         </div>
-
-                        <div className="space-y-4 p-5 sm:p-6">
+                        <div className="space-y-3 p-5 sm:p-6">
                             <div className="rounded-xl bg-neutral-50 p-4">
                                 <p className="text-xs text-neutral-500">
                                     Aset yang diajukan
                                 </p>
                                 <p className="mt-1 text-sm font-semibold text-neutral-900">
-                                    {selectedRequest.assetName}
+                                    {assetDescription(selectedRequest)}
                                 </p>
                                 <p className="mt-1 text-xs text-neutral-500">
-                                    {selectedRequest.quantity} unit ·{' '}
-                                    {formatDate(selectedRequest.borrowingDate)}{' '}
+                                    {formatDate(selectedRequest.borrowDate)}{' '}
                                     sampai{' '}
                                     {formatDate(selectedRequest.returnDate)}
                                 </p>
                             </div>
-
-                            {actionType === 'Disetujui' ? (
-                                <p className="text-sm leading-6 text-neutral-600">
-                                    Pengajuan akan ditandai disetujui. Pastikan
-                                    ketersediaan aset dan jadwal peminjaman
-                                    sudah diperiksa.
+                            <p className="text-sm leading-6 text-neutral-600">
+                                {actionType === 'Disetujui'
+                                    ? 'Status pengajuan akan diubah menjadi Disetujui dan peminjam dapat melihat keputusan ini.'
+                                    : 'Status persetujuan akan diubah menjadi Tidak Disetujui.'}
+                            </p>
+                            {actionError && (
+                                <p
+                                    role="alert"
+                                    className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                                >
+                                    {actionError}
                                 </p>
-                            ) : (
-                                <label className="block space-y-2">
-                                    <span className="text-xs font-semibold text-neutral-700">
-                                        {actionType === 'Ditolak'
-                                            ? 'Alasan penolakan'
-                                            : 'Catatan revisi'}
-                                        <span className="ml-1 text-red-500">
-                                            *
-                                        </span>
-                                    </span>
-                                    <textarea
-                                        value={actionNote}
-                                        onChange={(event) =>
-                                            setActionNote(event.target.value)
-                                        }
-                                        required
-                                        rows={4}
-                                        placeholder={
-                                            actionType === 'Ditolak'
-                                                ? 'Tuliskan alasan penolakan...'
-                                                : 'Tuliskan informasi yang perlu diperbaiki...'
-                                        }
-                                        className={inputClass}
-                                    />
-                                </label>
                             )}
                         </div>
-
                         <div className="flex flex-col-reverse gap-2 border-t border-neutral-100 p-5 sm:flex-row sm:justify-end sm:px-6">
                             <button
                                 type="button"
+                                disabled={savingDecision}
                                 onClick={() => setActionType(null)}
-                                className="rounded-xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                                className="rounded-xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                             >
                                 Batal
                             </button>
                             <button
                                 type="submit"
-                                className="rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                                disabled={savingDecision}
+                                className="rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50"
                             >
-                                {actionType === 'Disetujui'
-                                    ? 'Ya, Setujui'
-                                    : actionType === 'Ditolak'
-                                      ? 'Ya, Tolak'
-                                      : 'Kirim Catatan Revisi'}
+                                {savingDecision
+                                    ? 'Memproses...'
+                                    : actionType === 'Disetujui'
+                                      ? 'Ya, Setujui'
+                                      : 'Ya, Tolak'}
                             </button>
                         </div>
                     </form>

@@ -1,792 +1,401 @@
-
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
-import Icon, { type IconName } from '@/components/Icon';
+import Icon from '@/components/Icon';
 import AssetManagementBanner from '@/components/dashboard/AssetManagementBanner';
+import {
+    managementErrorMessage,
+    managementRequest,
+} from '@/lib/management-client';
 
-type InspectionStatus =
-    | 'Menunggu'
-    | 'Sedang Diperiksa'
-    | 'Selesai'
-    | 'Bermasalah';
+type AssetCondition = 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
 
-type AssetCondition =
-    | 'Baik'
-    | 'Rusak Ringan'
-    | 'Rusak Berat'
-    | 'Tidak Lengkap'
-    | 'Hilang';
-
-type InspectionDecision = 'Layak Digunakan' | 'Perlu Perbaikan' | 'Tidak Layak';
-
-type Inspection = {
-    id: number;
+type ReturnAsset = {
+    id: string;
     code: string;
+    name: string;
+    type: 'Barang' | 'Ruangan';
+    image: string;
+    location: string;
+    condition: string;
+    availableQuantity: number;
+    summary: string;
+    quantity: number;
+    inspectionCondition?: AssetCondition;
+    inspectionNotes?: string;
+    inspectedAt?: string;
+    inspectedBy?: string;
+};
+
+type ReturnRequest = {
+    id: string;
+    code: string;
+    borrowingId: string;
+    borrowingCode: string;
     borrower: string;
     identity: string;
-    borrowerType: string;
-    organization: string;
-    asset: string;
-    assetCode: string;
-    assetType: 'Barang' | 'Ruangan';
-    quantity: number;
-    borrowDate: string;
+    assets: ReturnAsset[];
+    photos: string[];
     returnDate: string;
-    actualReturnDate: string;
-    status: InspectionStatus;
-    condition: AssetCondition;
-    decision: InspectionDecision | '';
-    completeness: boolean;
-    physical: boolean;
-    function: boolean;
-    cleanliness: boolean;
     notes: string;
-    inspector: string;
-    inspectedAt: string;
+    submittedAt: string;
 };
 
-const PER_PAGE = 5;
-
-const initialInspections: Inspection[] = [
-    {
-        id: 1,
-        code: 'PJM-2026-001',
-        borrower: 'Rendra Nur Yuliadi',
-        identity: '240160121104',
-        borrowerType: 'Mahasiswa',
-        organization: 'UKM TahuNgoding',
-        asset: 'Proyektor Epson',
-        assetCode: 'FAMS-BRG-002',
-        assetType: 'Barang',
-        quantity: 1,
-        borrowDate: '2026-11-10',
-        returnDate: '2026-11-12',
-        actualReturnDate: '2026-11-12',
-        status: 'Menunggu',
-        condition: 'Baik',
-        decision: '',
-        completeness: false,
-        physical: false,
-        function: false,
-        cleanliness: false,
-        notes: '',
-        inspector: '-',
-        inspectedAt: '',
-    },
-    {
-        id: 2,
-        code: 'PJM-2026-002',
-        borrower: 'Amelia Puji Lestari',
-        identity: '240160121007',
-        borrowerType: 'Mahasiswa',
-        organization: 'Individu',
-        asset: 'Laptop Lenovo ThinkPad',
-        assetCode: 'FAMS-BRG-001',
-        assetType: 'Barang',
-        quantity: 1,
-        borrowDate: '2026-11-09',
-        returnDate: '2026-11-11',
-        actualReturnDate: '2026-11-11',
-        status: 'Sedang Diperiksa',
-        condition: 'Baik',
-        decision: '',
-        completeness: true,
-        physical: false,
-        function: false,
-        cleanliness: false,
-        notes: '',
-        inspector: 'Admin',
-        inspectedAt: '',
-    },
-    {
-        id: 3,
-        code: 'PJM-2026-003',
-        borrower: 'Herliana Tri Cahyanti',
-        identity: '240160121044',
-        borrowerType: 'Mahasiswa',
-        organization: 'Himpunan Mahasiswa',
-        asset: 'Kamera DSLR Canon',
-        assetCode: 'FAMS-BRG-003',
-        assetType: 'Barang',
-        quantity: 1,
-        borrowDate: '2026-11-07',
-        returnDate: '2026-11-09',
-        actualReturnDate: '2026-11-09',
-        status: 'Bermasalah',
-        condition: 'Rusak Ringan',
-        decision: 'Perlu Perbaikan',
-        completeness: true,
-        physical: true,
-        function: true,
-        cleanliness: true,
-        notes: 'Terdapat goresan pada bagian bodi kamera.',
-        inspector: 'Admin',
-        inspectedAt: '2026-11-09',
-    },
-    {
-        id: 4,
-        code: 'PJM-2026-004',
-        borrower: 'Wulan Nurfitriani',
-        identity: '240160121116',
-        borrowerType: 'Mahasiswa',
-        organization: 'UKM TahuNgoding',
-        asset: 'Ruang Seminar FTI',
-        assetCode: 'FAMS-RNG-003',
-        assetType: 'Ruangan',
-        quantity: 1,
-        borrowDate: '2026-11-05',
-        returnDate: '2026-11-06',
-        actualReturnDate: '2026-11-06',
-        status: 'Selesai',
-        condition: 'Baik',
-        decision: 'Layak Digunakan',
-        completeness: true,
-        physical: true,
-        function: true,
-        cleanliness: true,
-        notes: 'Ruangan telah dikembalikan dalam kondisi bersih.',
-        inspector: 'Admin',
-        inspectedAt: '2026-11-06',
-    },
-    {
-        id: 5,
-        code: 'PJM-2026-005',
-        borrower: 'Jajang Didin',
-        identity: '240160121088',
-        borrowerType: 'Mahasiswa',
-        organization: 'UKM TahuNgoding',
-        asset: 'Laptop Lenovo ThinkPad',
-        assetCode: 'FAMS-BRG-001',
-        assetType: 'Barang',
-        quantity: 1,
-        borrowDate: '2026-11-03',
-        returnDate: '2026-11-04',
-        actualReturnDate: '2026-11-04',
-        status: 'Selesai',
-        condition: 'Baik',
-        decision: 'Layak Digunakan',
-        completeness: true,
-        physical: true,
-        function: true,
-        cleanliness: true,
-        notes: 'Aset lengkap dan berfungsi normal.',
-        inspector: 'Admin',
-        inspectedAt: '2026-11-04',
-    },
+const pageSize = 8;
+const conditions: AssetCondition[] = [
+    'Baik',
+    'Rusak Ringan',
+    'Rusak Berat',
 ];
-
-const statusStyles: Record<InspectionStatus, string> = {
-    Menunggu: 'bg-neutral-100 text-neutral-700 border-neutral-200',
-    'Sedang Diperiksa': 'bg-neutral-200 text-neutral-800 border-neutral-300',
-    Selesai: 'bg-black text-white border-black',
-    Bermasalah: 'bg-neutral-300 text-neutral-900 border-neutral-400',
-};
-
-const statusIcons: Record<InspectionStatus, IconName> = {
-    Menunggu: 'clock',
-    'Sedang Diperiksa': 'clipboard-check',
-    Selesai: 'check-check',
-    Bermasalah: 'alert-circle',
-};
-
-const conditionStyles: Record<AssetCondition, string> = {
-    Baik: 'bg-neutral-100 text-neutral-800 border-neutral-200',
-    'Rusak Ringan': 'bg-neutral-200 text-neutral-800 border-neutral-300',
-    'Rusak Berat': 'bg-neutral-300 text-neutral-900 border-neutral-400',
-    'Tidak Lengkap': 'bg-neutral-200 text-neutral-800 border-neutral-300',
-    Hilang: 'bg-black text-white border-black',
-};
-
 const inputClass =
-    'w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100';
+    'w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-500 focus:ring-2 focus:ring-neutral-100';
 
-const formatDate = (date: string) =>
-    date
-        ? new Date(`${date}T00:00:00`).toLocaleDateString('id-ID', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-          })
-        : '-';
-
-function StatusBadge({ status }: { status: InspectionStatus }) {
-    return (
-        <span
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${statusStyles[status]}`}
-        >
-            <Icon name={statusIcons[status]} size={13} />
-            {status}
-        </span>
-    );
+function formatDate(value: string) {
+    if (!value) return '-';
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    });
 }
 
-function ConditionBadge({ condition }: { condition: AssetCondition }) {
-    return (
-        <span
-            className={`inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conditionStyles[condition]}`}
-        >
-            {condition}
-        </span>
-    );
+function getInspectedCount(item: ReturnRequest) {
+    return item.assets.filter((asset) => asset.inspectedAt).length;
 }
 
-function SectionHeading({
-    title,
-    description,
-}: {
-    title: string;
-    description: string;
-}) {
-    return (
-        <div className="mb-5">
-            <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-            <p className="mt-1 text-sm text-gray-400">{description}</p>
-        </div>
-    );
+function getInspectionLabel(item: ReturnRequest) {
+    return `${getInspectedCount(item)}/${item.assets.length} aset diperiksa`;
 }
 
-function DetailItem({
-    label,
-    value,
-}: {
-    label: string;
-    value: string;
-}) {
+function isInspectionComplete(item: ReturnRequest) {
     return (
-        <div className="min-w-0 space-y-1">
-            <p className="text-xs text-gray-400">{label}</p>
-            <p className="break-words text-sm font-medium text-gray-700">
-                {value || '-'}
-            </p>
-        </div>
+        item.assets.length > 0 &&
+        item.assets.every((asset) => Boolean(asset.inspectedAt))
     );
 }
 
 export default function PemeriksaanPengembalian() {
-    const [inspections, setInspections] = useState(initialInspections);
+    const [returns, setReturns] = useState<ReturnRequest[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [reloadKey, setReloadKey] = useState(0);
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('Semua Status');
-    const [conditionFilter, setConditionFilter] = useState('Semua Kondisi');
-    const [currentPage, setCurrentPage] = useState(1);
-
-    const [detailItem, setDetailItem] = useState<Inspection | null>(null);
-    const [inspectionItem, setInspectionItem] = useState<Inspection | null>(null);
-
-    const [checklist, setChecklist] = useState({
-        completeness: false,
-        physical: false,
-        function: false,
-        cleanliness: false,
-    });
-
+    const [filter, setFilter] = useState('Semua Data');
+    const [page, setPage] = useState(1);
+    const [selectedReturn, setSelectedReturn] =
+        useState<ReturnRequest | null>(null);
+    const [selectedAsset, setSelectedAsset] = useState<ReturnAsset | null>(
+        null,
+    );
     const [condition, setCondition] = useState<AssetCondition>('Baik');
-    const [decision, setDecision] = useState<InspectionDecision | ''>('');
     const [notes, setNotes] = useState('');
     const [formError, setFormError] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState('');
 
-    const stats = [
-        {
-            label: 'Total Pengembalian',
-            value: inspections.length,
-            icon: 'clipboard-list' as IconName,
-            card: 'border-gray-900 bg-gray-950 text-white',
-            labelColor: 'text-gray-300',
-            valueColor: 'text-white',
-            descriptionColor: 'text-gray-400',
-            iconColor: 'bg-white/10 text-white',
-            texture: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,.14) 1px, transparent 0)',
-            description: 'Seluruh transaksi',
-        },
-        {
-            label: 'Menunggu Pemeriksaan',
-            value: inspections.filter((item) => item.status === 'Menunggu')
-                .length,
-            icon: 'clock' as IconName,
-            card: 'border-gray-700 bg-gray-800 text-white',
-            labelColor: 'text-gray-300',
-            valueColor: 'text-white',
-            descriptionColor: 'text-gray-400',
-            iconColor: 'bg-white/10 text-gray-100',
-            texture: 'repeating-linear-gradient(135deg, rgba(255,255,255,.055) 0px, rgba(255,255,255,.055) 1px, transparent 1px, transparent 10px)',
-            description: 'Perlu diperiksa',
-        },
-        {
-            label: 'Sedang Diperiksa',
-            value: inspections.filter(
-                (item) => item.status === 'Sedang Diperiksa',
-            ).length,
-            icon: 'clipboard-check' as IconName,
-            card: 'border-gray-300 bg-gray-200 text-gray-950',
-            labelColor: 'text-gray-600',
-            valueColor: 'text-gray-950',
-            descriptionColor: 'text-gray-600',
-            iconColor: 'bg-white/70 text-gray-800',
-            texture: 'radial-gradient(circle at 1px 1px, rgba(17,24,39,.11) 1px, transparent 0)',
-            description: 'Dalam proses',
-        },
-        {
-            label: 'Selesai / Bermasalah',
-            value: inspections.filter(
-                (item) =>
-                    item.status === 'Selesai' ||
-                    item.status === 'Bermasalah',
-            ).length,
-            icon: 'check-circle' as IconName,
-            card: 'border-gray-200 bg-white text-gray-950',
-            labelColor: 'text-gray-500',
-            valueColor: 'text-gray-950',
-            descriptionColor: 'text-gray-500',
-            iconColor: 'bg-gray-100 text-gray-700',
-            texture: 'repeating-linear-gradient(45deg, rgba(17,24,39,.035) 0px, rgba(17,24,39,.035) 1px, transparent 1px, transparent 9px)',
-            description: 'Sudah ditindaklanjuti',
-        },
-    ];
+    useEffect(() => {
+        let active = true;
+        setLoading(true);
+        setLoadError('');
 
-    const filteredItems = useMemo(() => {
-        return inspections.filter((item) => {
-            const keyword = search.toLowerCase();
+        managementRequest<{ returns: ReturnRequest[] }>(
+            '/api/returns/inspection',
+        )
+            .then((result) => {
+                if (!active) return;
+                if (!Array.isArray(result.returns)) {
+                    throw new Error('Data pengembalian tidak valid.');
+                }
+                setReturns(result.returns);
+            })
+            .catch((error: unknown) => {
+                if (active) setLoadError(managementErrorMessage(error));
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
 
-            const matchesSearch =
-                item.code.toLowerCase().includes(keyword) ||
-                item.borrower.toLowerCase().includes(keyword) ||
-                item.identity.toLowerCase().includes(keyword) ||
-                item.asset.toLowerCase().includes(keyword) ||
-                item.assetCode.toLowerCase().includes(keyword);
-
-            const matchesStatus =
-                statusFilter === 'Semua Status' ||
-                item.status === statusFilter;
-
-            const matchesCondition =
-                conditionFilter === 'Semua Kondisi' ||
-                item.condition === conditionFilter;
-
-            return matchesSearch && matchesStatus && matchesCondition;
-        });
-    }, [inspections, search, statusFilter, conditionFilter]);
-
-    const totalPages = Math.max(
-        1,
-        Math.ceil(filteredItems.length / PER_PAGE),
-    );
-
-    const paginatedItems = filteredItems.slice(
-        (currentPage - 1) * PER_PAGE,
-        currentPage * PER_PAGE,
-    );
-
-    const resetFilters = () => {
-        setSearch('');
-        setStatusFilter('Semua Status');
-        setConditionFilter('Semua Kondisi');
-        setCurrentPage(1);
-    };
-
-    const openInspection = (item: Inspection) => {
-        setInspectionItem(item);
-        setChecklist({
-            completeness: item.completeness,
-            physical: item.physical,
-            function: item.function,
-            cleanliness: item.cleanliness,
-        });
-        setCondition(item.condition);
-        setDecision(item.decision);
-        setNotes(item.notes);
-        setFormError('');
-
-        setInspections((previous) =>
-            previous.map((inspection) =>
-                inspection.id === item.id &&
-                inspection.status === 'Menunggu'
-                    ? { ...inspection, status: 'Sedang Diperiksa' }
-                    : inspection,
-            ),
-        );
-    };
-
-    const closeInspection = () => {
-        setInspectionItem(null);
-        setFormError('');
-    };
-
-    const updateChecklist = (
-        key: keyof typeof checklist,
-        value: boolean,
-    ) => {
-        setChecklist((previous) => ({
-            ...previous,
-            [key]: value,
-        }));
-    };
-
-    const handleSaveInspection = () => {
-        if (!inspectionItem) return;
-
-        const allChecked = Object.values(checklist).every(Boolean);
-
-        if (!allChecked) {
-            setFormError('Selesaikan seluruh checklist pemeriksaan terlebih dahulu.');
-            return;
-        }
-
-        if (!decision) {
-            setFormError('Pilih keputusan akhir pemeriksaan aset.');
-            return;
-        }
-
-        if (
-            (condition === 'Rusak Ringan' ||
-                condition === 'Rusak Berat' ||
-                condition === 'Tidak Lengkap' ||
-                condition === 'Hilang') &&
-            !notes.trim()
-        ) {
-            setFormError('Tambahkan catatan untuk menjelaskan kondisi aset.');
-            return;
-        }
-
-        const nextStatus: InspectionStatus =
-            decision === 'Layak Digunakan' ? 'Selesai' : 'Bermasalah';
-
-        const today = new Date().toISOString().slice(0, 10);
-
-        const updatedItem: Inspection = {
-            ...inspectionItem,
-            status: nextStatus,
-            condition,
-            decision,
-            completeness: checklist.completeness,
-            physical: checklist.physical,
-            function: checklist.function,
-            cleanliness: checklist.cleanliness,
-            notes,
-            inspector: 'Admin',
-            inspectedAt: today,
+        return () => {
+            active = false;
         };
+    }, [reloadKey]);
 
-        setInspections((previous) =>
-            previous.map((item) =>
-                item.id === inspectionItem.id ? updatedItem : item,
-            ),
-        );
+    const pendingAssets = returns.reduce(
+        (total, item) =>
+            total +
+            item.assets.filter((asset) => !asset.inspectedAt).length,
+        0,
+    );
+    const filteredReturns = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        return returns.filter((item) => {
+            const matchesFilter =
+                filter === 'Semua Data' ||
+                (filter === 'Menunggu Pemeriksaan' &&
+                    item.assets.some((asset) => !asset.inspectedAt)) ||
+                (filter === 'Selesai Diperiksa' &&
+                    isInspectionComplete(item));
+            const matchesSearch =
+                !query ||
+                [
+                    item.code,
+                    item.borrowingCode,
+                    item.borrower,
+                    item.identity,
+                    item.assets.map((asset) => asset.name).join(' '),
+                ]
+                    .join(' ')
+                    .toLowerCase()
+                    .includes(query);
+            return matchesFilter && matchesSearch;
+        });
+    }, [returns, search, filter]);
+    const totalPages = Math.max(1, Math.ceil(filteredReturns.length / pageSize));
+    const visibleReturns = filteredReturns.slice(
+        (Math.min(page, totalPages) - 1) * pageSize,
+        Math.min(page, totalPages) * pageSize,
+    );
 
-        setInspectionItem(null);
+    function openInspection(item: ReturnRequest, asset: ReturnAsset) {
+        setSelectedReturn(item);
+        setSelectedAsset(asset);
+        setCondition(asset.inspectionCondition ?? 'Baik');
+        setNotes(asset.inspectionNotes ?? '');
         setFormError('');
-    };
+    }
 
-    const checklistItems: {
-        key: keyof typeof checklist;
-        title: string;
-        description: string;
-    }[] = [
-        {
-            key: 'completeness',
-            title: 'Kelengkapan Aset',
-            description:
-                'Pastikan seluruh komponen, aksesori, dan perlengkapan dikembalikan.',
-        },
-        {
-            key: 'physical',
-            title: 'Kondisi Fisik',
-            description:
-                'Periksa apakah terdapat goresan, retak, pecah, atau kerusakan.',
-        },
-        {
-            key: 'function',
-            title: 'Fungsi Aset',
-            description:
-                'Pastikan aset masih dapat digunakan sesuai fungsinya.',
-        },
-        {
-            key: 'cleanliness',
-            title: 'Kebersihan Aset',
-            description:
-                'Pastikan aset atau ruangan dikembalikan dalam kondisi bersih.',
-        },
-    ];
+    async function submitInspection(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!selectedReturn || !selectedAsset) return;
+
+        setSaving(true);
+        setFormError('');
+        try {
+            await managementRequest<{ saved: boolean }>(
+                `/api/returns/${encodeURIComponent(selectedReturn.id)}/inspection`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        assetId: selectedAsset.id,
+                        condition,
+                        notes,
+                    }),
+                },
+            );
+            const inspectedAt = new Date().toISOString().slice(0, 10);
+            const updatedAsset: ReturnAsset = {
+                ...selectedAsset,
+                inspectionCondition: condition,
+                inspectionNotes: notes.trim(),
+                inspectedAt,
+            };
+            const updateReturn = (item: ReturnRequest): ReturnRequest =>
+                item.id === selectedReturn.id
+                    ? {
+                          ...item,
+                          assets: item.assets.map((asset) =>
+                              asset.id === selectedAsset.id
+                                  ? updatedAsset
+                                  : asset,
+                          ),
+                      }
+                    : item;
+            setReturns((previous) => previous.map(updateReturn));
+            setSelectedReturn((previous) =>
+                previous ? updateReturn(previous) : previous,
+            );
+            setSelectedAsset(null);
+            setNotice(
+                'Kondisi aset berhasil diperbarui. Status ketersediaan aset tidak diubah.',
+            );
+            setReloadKey((value) => value + 1);
+        } catch (error) {
+            setFormError(managementErrorMessage(error));
+        } finally {
+            setSaving(false);
+        }
+    }
 
     return (
         <DashboardLayout>
-            <div className="w-full min-w-0 space-y-6 pb-8">
+            <div className="space-y-6 p-4 md:p-6">
                 <AssetManagementBanner
-                    title="Pemeriksaan Pengembalian Aset."
-                    description="Periksa kondisi barang dan ruangan yang telah dikembalikan, catat hasil pemeriksaan, serta tentukan kelayakan aset untuk digunakan kembali."
+                    title="Pemeriksaan Aset."
+                    description="Periksa aset satu per satu dari setiap data pengembalian. Pemeriksaan hanya memperbarui kondisi aset, bukan status ketersediaannya."
                     contextLabel="Pemeriksaan pengembalian"
                     icon="clipboard-check"
-                    statusLabel="Pemeriksaan aset dipantau"
+                    statusLabel="Data berasal dari pengembalian"
                     metrics={[
-                        {
-                            label: 'Total pengembalian',
-                            value: inspections.length,
-                        },
-                        {
-                            label: 'Menunggu pemeriksaan',
-                            value: inspections.filter(
-                                (item) => item.status === 'Menunggu',
-                            ).length,
-                        },
+                        { label: 'Data pengembalian', value: returns.length },
+                        { label: 'Aset menunggu pemeriksaan', value: pendingAssets },
                     ]}
                 />
 
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <span>Dashboard</span>
-                    <Icon name="chevron-right" size={13} />
-                    <a
-                        href="/dashboard/pengembalian"
-                        className="transition hover:text-gray-700"
+                {notice && (
+                    <div
+                        role="status"
+                        className="flex items-start justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
                     >
-                        Pengembalian
-                    </a>
-                    <Icon name="chevron-right" size={13} />
-                    <span className="font-medium text-gray-600">
-                        Pemeriksaan
-                    </span>
-                </div>
-
-                {/* Statistics */}
-                <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {stats.map((stat) => (
-                        <div
-                            key={stat.label}
-                            className={`group relative isolate overflow-hidden rounded-2xl border p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg ${stat.card}`}
+                        <p>{notice}</p>
+                        <button
+                            type="button"
+                            onClick={() => setNotice('')}
+                            className="font-semibold"
+                            aria-label="Tutup notifikasi"
                         >
-                            <div
-                                aria-hidden="true"
-                                className="pointer-events-none absolute inset-0 -z-10 opacity-70 transition duration-300 group-hover:scale-105 group-hover:opacity-100"
-                                style={{
-                                    backgroundImage: stat.texture,
-                                    backgroundSize:
-                                        stat.label === 'Total Pengembalian'
-                                            ? '14px 14px'
-                                            : 'auto',
-                                }}
-                            />
-                            <div
-                                aria-hidden="true"
-                                className="pointer-events-none absolute -right-10 -top-12 -z-10 h-36 w-36 rounded-full border border-current opacity-[0.08] transition duration-300 group-hover:scale-110"
-                            />
-                            <div className="relative flex min-h-28 items-start justify-between gap-3">
-                                <div className="flex min-h-28 flex-col">
-                                    <p
-                                        className={`text-sm font-medium ${stat.labelColor}`}
-                                    >
-                                        {stat.label}
-                                    </p>
-                                    <p
-                                        className={`mt-2 text-4xl font-bold tracking-tight ${stat.valueColor}`}
-                                    >
-                                        {stat.value}
-                                    </p>
-                                    <div className="mt-auto flex items-center gap-2 pt-2">
-                                        <span className="h-px w-5 bg-current opacity-30" />
-                                        <p
-                                            className={`text-xs ${stat.descriptionColor}`}
-                                        >
-                                            {stat.description}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div
-                                    className={`rounded-xl p-3 shadow-sm ring-1 ring-current/5 transition duration-300 group-hover:rotate-3 group-hover:scale-105 ${stat.iconColor}`}
-                                >
-                                    <Icon name={stat.icon} size={21} />
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </section>
+                            Tutup
+                        </button>
+                    </div>
+                )}
 
-                {/* Table */}
-                <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                    <div className="flex flex-col gap-4 border-b border-gray-100 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-4 border-b border-neutral-100 p-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <h2 className="text-base font-semibold text-gray-900">
-                                Daftar Pemeriksaan Pengembalian
+                            <h2 className="text-base font-semibold text-neutral-900">
+                                Data Pengembalian
                             </h2>
-                            <p className="mt-1 text-xs text-gray-400">
-                                Data aset yang telah dikembalikan dan perlu diperiksa pengelola.
+                            <p className="mt-1 text-sm text-neutral-500">
+                                Setiap baris adalah satu pengajuan; periksa aset
+                                di dalamnya satu per satu.
                             </p>
                         </div>
-                    </div>
-
-                    {/* Filters */}
-                    <div className="flex flex-col gap-3 border-b border-gray-100 p-5 lg:flex-row">
-                        <div className="relative flex-1">
-                            <Icon
-                                name="search"
-                                size={17}
-                                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                            />
+                        <div className="flex flex-col gap-3 sm:flex-row">
                             <input
+                                type="search"
                                 value={search}
                                 onChange={(event) => {
                                     setSearch(event.target.value);
-                                    setCurrentPage(1);
+                                    setPage(1);
                                 }}
-                                placeholder="Cari nama peminjam, aset, atau kode..."
-                                className={`${inputClass} pl-10`}
+                                placeholder="Cari kode, peminjam, aset..."
+                                className={`${inputClass} sm:w-72`}
                             />
+                            <select
+                                value={filter}
+                                onChange={(event) => {
+                                    setFilter(event.target.value);
+                                    setPage(1);
+                                }}
+                                className={`${inputClass} sm:w-56`}
+                            >
+                                <option>Semua Data</option>
+                                <option>Menunggu Pemeriksaan</option>
+                                <option>Selesai Diperiksa</option>
+                            </select>
                         </div>
-
-                        <select
-                            value={conditionFilter}
-                            onChange={(event) => {
-                                setConditionFilter(event.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className={`${inputClass} lg:w-48`}
-                        >
-                            <option>Semua Kondisi</option>
-                            <option>Baik</option>
-                            <option>Rusak Ringan</option>
-                            <option>Rusak Berat</option>
-                            <option>Tidak Lengkap</option>
-                            <option>Hilang</option>
-                        </select>
-
-                        <select
-                            value={statusFilter}
-                            onChange={(event) => {
-                                setStatusFilter(event.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className={`${inputClass} lg:w-48`}
-                        >
-                            <option>Semua Status</option>
-                            <option>Menunggu</option>
-                            <option>Sedang Diperiksa</option>
-                            <option>Selesai</option>
-                            <option>Bermasalah</option>
-                        </select>
-
-                        <button
-                            onClick={resetFilters}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50"
-                        >
-                            <Icon name="rotate-ccw" size={15} />
-                            Reset
-                        </button>
                     </div>
 
-                    {/* Table Content */}
+                    {loadError && (
+                        <div
+                            role="alert"
+                            className="mx-5 mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                        >
+                            <p>{loadError}</p>
+                            <button
+                                type="button"
+                                onClick={() => setReloadKey((value) => value + 1)}
+                                className="mt-2 font-semibold underline"
+                            >
+                                Coba lagi
+                            </button>
+                        </div>
+                    )}
+
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1050px] text-left">
-                            <thead className="bg-gray-50/80">
-                                <tr className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                    <th className="px-5 py-4">Nama Peminjam</th>
-                                    <th className="px-5 py-4">Aset Dikembalikan</th>
-                                    <th className="px-5 py-4">Tanggal Kembali</th>
-                                    <th className="px-5 py-4">Kondisi</th>
-                                    <th className="px-5 py-4">Status Pemeriksaan</th>
-                                    <th className="px-5 py-4 text-center">Aksi</th>
+                        <table className="w-full min-w-[900px] text-left">
+                            <thead className="bg-neutral-50">
+                                <tr className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    <th className="px-5 py-4">
+                                        Data Pengembalian
+                                    </th>
+                                    <th className="px-5 py-4">Peminjam</th>
+                                    <th className="px-5 py-4">Aset</th>
+                                    <th className="px-5 py-4">Tanggal</th>
+                                    <th className="px-5 py-4">
+                                        Progres Pemeriksaan
+                                    </th>
+                                    <th className="px-5 py-4 text-right">
+                                        Aksi
+                                    </th>
                                 </tr>
                             </thead>
-
-                            <tbody className="divide-y divide-gray-100">
-                                {paginatedItems.map((item) => (
-                                    <tr
-                                        key={item.id}
-                                        className="transition hover:bg-gray-50/70"
-                                    >
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-sm font-semibold text-gray-600">
-                                                    {item.borrower
-                                                        .split(' ')
-                                                        .slice(0, 2)
-                                                        .map((word) => word[0])
-                                                        .join('')
-                                                        .toUpperCase()}
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-semibold text-gray-800">
-                                                        {item.borrower}
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-gray-400">
-                                                        {item.code}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <p className="text-sm font-medium text-gray-700">
-                                                {item.asset}
-                                            </p>
-                                            <p className="mt-1 text-xs text-gray-400">
-                                                {item.assetCode} · {item.quantity}{' '}
-                                                {item.assetType === 'Barang'
-                                                    ? 'unit'
-                                                    : 'ruangan'}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <p className="text-xs text-gray-700">
-                                                {formatDate(item.actualReturnDate)}
-                                            </p>
-                                            <p className="mt-1 text-xs text-gray-400">
-                                                Rencana: {formatDate(item.returnDate)}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <ConditionBadge condition={item.condition} />
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <StatusBadge status={item.status} />
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-center justify-center gap-1">
-                                                <button
-                                                    onClick={() => setDetailItem(item)}
-                                                    title="Lihat detail"
-                                                    className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
-                                                >
-                                                    <Icon name="eye" size={17} />
-                                                </button>
-
-                                                {item.status !== 'Selesai' &&
-                                                    item.status !== 'Bermasalah' && (
-                                                        <button
-                                                            onClick={() => openInspection(item)}
-                                                            title="Periksa aset"
-                                                            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
-                                                        >
-                                                            <Icon
-                                                                name="clipboard-check"
-                                                                size={17}
-                                                            />
-                                                        </button>
-                                                    )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-
-                                {paginatedItems.length === 0 && (
+                            <tbody className="divide-y divide-neutral-100">
+                                {loading ? (
                                     <tr>
                                         <td
                                             colSpan={6}
-                                            className="px-5 py-14 text-center"
+                                            className="px-5 py-12 text-center text-sm text-neutral-500"
                                         >
-                                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
-                                                <Icon
-                                                    name="clipboard-list"
-                                                    size={23}
-                                                />
-                                            </div>
-                                            <p className="mt-3 text-sm font-semibold text-gray-700">
-                                                Data pemeriksaan tidak ditemukan
-                                            </p>
-                                            <p className="mt-1 text-xs text-gray-400">
-                                                Coba ubah kata kunci atau filter pencarian.
-                                            </p>
+                                            Memuat data pengembalian...
+                                        </td>
+                                    </tr>
+                                ) : visibleReturns.length ? (
+                                    visibleReturns.map((item) => (
+                                        <tr key={item.id}>
+                                            <td className="px-5 py-4">
+                                                <p className="text-sm font-semibold text-neutral-900">
+                                                    {item.code}
+                                                </p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    Peminjaman{' '}
+                                                    {item.borrowingCode}
+                                                </p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <p className="text-sm font-medium text-neutral-800">
+                                                    {item.borrower}
+                                                </p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    {item.identity}
+                                                </p>
+                                            </td>
+                                            <td className="max-w-sm px-5 py-4 text-sm text-neutral-700">
+                                                {item.assets
+                                                    .map(
+                                                        (asset) =>
+                                                            `${asset.name} (${asset.quantity})`,
+                                                    )
+                                                    .join(', ')}
+                                            </td>
+                                            <td className="px-5 py-4 text-sm text-neutral-700">
+                                                {formatDate(item.returnDate)}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span
+                                                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                                        isInspectionComplete(item)
+                                                            ? 'bg-emerald-50 text-emerald-800'
+                                                            : 'bg-amber-50 text-amber-800'
+                                                    }`}
+                                                >
+                                                    {getInspectionLabel(item)}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-4 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSelectedReturn(item)
+                                                    }
+                                                    className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                                >
+                                                    Periksa aset
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td
+                                            colSpan={6}
+                                            className="px-5 py-12 text-center text-sm text-neutral-500"
+                                        >
+                                            {returns.length
+                                                ? 'Tidak ada data yang cocok dengan filter.'
+                                                : 'Belum ada data pengembalian untuk diperiksa.'}
                                         </td>
                                     </tr>
                                 )}
@@ -794,483 +403,261 @@ export default function PemeriksaanPengembalian() {
                         </table>
                     </div>
 
-                    {/* Pagination */}
-                    <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs text-gray-400">
+                    <div className="flex flex-col gap-3 border-t border-neutral-100 px-5 py-4 text-sm text-neutral-500 sm:flex-row sm:items-center sm:justify-between">
+                        <p>
                             Menampilkan{' '}
-                            <span className="font-semibold text-gray-700">
-                                {filteredItems.length === 0
-                                    ? 0
-                                    : (currentPage - 1) * PER_PAGE + 1}
-                                {' - '}
-                                {Math.min(
-                                    currentPage * PER_PAGE,
-                                    filteredItems.length,
-                                )}
-                            </span>{' '}
-                            dari{' '}
-                            <span className="font-semibold text-gray-700">
-                                {filteredItems.length}
-                            </span>{' '}
-                            data
+                            {filteredReturns.length
+                                ? (Math.min(page, totalPages) - 1) * pageSize + 1
+                                : 0}
+                            –
+                            {Math.min(page, totalPages) * pageSize} dari{' '}
+                            {filteredReturns.length} data
                         </p>
-
                         <div className="flex items-center gap-2">
                             <button
-                                disabled={currentPage === 1}
-                                onClick={() =>
-                                    setCurrentPage((page) => page - 1)
-                                }
-                                className="rounded-lg border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                type="button"
+                                disabled={page <= 1}
+                                onClick={() => setPage((value) => value - 1)}
+                                className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium text-neutral-700 disabled:opacity-40"
                             >
-                                <Icon name="chevron-left" size={16} />
+                                Sebelumnya
                             </button>
-
-                            <span className="px-2 text-xs text-gray-500">
-                                Halaman {currentPage} dari {totalPages}
+                            <span>
+                                {Math.min(page, totalPages)} / {totalPages}
                             </span>
-
                             <button
-                                disabled={currentPage >= totalPages}
-                                onClick={() =>
-                                    setCurrentPage((page) => page + 1)
-                                }
-                                className="rounded-lg border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                type="button"
+                                disabled={page >= totalPages}
+                                onClick={() => setPage((value) => value + 1)}
+                                className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium text-neutral-700 disabled:opacity-40"
                             >
-                                <Icon name="chevron-right" size={16} />
+                                Berikutnya
                             </button>
                         </div>
                     </div>
                 </section>
             </div>
 
-            {/* Inspection Modal */}
-            {inspectionItem &&
+            {selectedReturn &&
                 createPortal(
                     <div
-                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6"
                         onMouseDown={(event) => {
                             if (event.target === event.currentTarget) {
-                                closeInspection();
+                                setSelectedReturn(null);
                             }
                         }}
                     >
                         <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-                            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+                            <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4 sm:px-7">
                                 <div>
-                                    <h2 className="text-lg font-semibold text-gray-900">
-                                        Pemeriksaan Aset
+                                    <h2 className="text-lg font-bold text-neutral-900">
+                                        Pemeriksaan Pengembalian
                                     </h2>
-                                    <p className="mt-1 text-xs text-gray-400">
-                                        {inspectionItem.code}
+                                    <p className="mt-1 text-xs text-neutral-500">
+                                        {selectedReturn.code} ·{' '}
+                                        {selectedReturn.borrower}
                                     </p>
                                 </div>
-
                                 <button
-                                    onClick={closeInspection}
-                                    className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
+                                    type="button"
+                                    onClick={() => setSelectedReturn(null)}
+                                    className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
                                 >
-                                    <Icon name="x" size={19} />
+                                    Tutup
                                 </button>
                             </div>
-
-                            <div className="flex-1 space-y-7 overflow-y-auto p-6">
-                                <section>
-                                    <SectionHeading
-                                        title="Informasi Pengembalian"
-                                        description="Informasi peminjam dan aset yang dikembalikan."
-                                    />
-
-                                    <div className="grid gap-5 rounded-xl border border-gray-100 bg-gray-50 p-4 sm:grid-cols-2">
-                                        <DetailItem
-                                            label="Nama Peminjam"
-                                            value={inspectionItem.borrower}
-                                        />
-                                        <DetailItem
-                                            label="NIM / NIP / NIK"
-                                            value={inspectionItem.identity}
-                                        />
-                                        <DetailItem
-                                            label="Organisasi"
-                                            value={inspectionItem.organization}
-                                        />
-                                        <DetailItem
-                                            label="Kode Transaksi"
-                                            value={inspectionItem.code}
-                                        />
-                                        <DetailItem
-                                            label="Nama Aset"
-                                            value={inspectionItem.asset}
-                                        />
-                                        <DetailItem
-                                            label="Kode Aset"
-                                            value={inspectionItem.assetCode}
-                                        />
-                                        <DetailItem
-                                            label="Tanggal Peminjaman"
-                                            value={formatDate(inspectionItem.borrowDate)}
-                                        />
-                                        <DetailItem
-                                            label="Tanggal Pengembalian"
-                                            value={formatDate(inspectionItem.actualReturnDate)}
-                                        />
-                                    </div>
-                                </section>
-
-                                <section>
-                                    <SectionHeading
-                                        title="Checklist Pemeriksaan"
-                                        description="Pastikan seluruh bagian aset telah diperiksa sebelum menyimpan hasil."
-                                    />
-
-                                    <div className="space-y-3">
-                                        {checklistItems.map((item) => (
-                                            <label
-                                                key={item.key}
-                                                className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-4 transition hover:bg-gray-50"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={checklist[item.key]}
-                                                    onChange={(event) =>
-                                                        updateChecklist(
-                                                            item.key,
-                                                            event.target.checked,
-                                                        )
-                                                    }
-                                                    className="mt-1 h-4 w-4 rounded border-gray-300 accent-gray-900"
-                                                />
-
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-semibold text-gray-800">
-                                                        {item.title}
-                                                    </p>
-                                                    <p className="mt-1 text-xs leading-5 text-gray-400">
-                                                        {item.description}
-                                                    </p>
-                                                </div>
-
-                                                {checklist[item.key] && (
-                                                    <Icon
-                                                        name="check-circle"
-                                                        size={17}
-                                                        className="text-gray-700"
-                                                    />
-                                                )}
-                                            </label>
-                                        ))}
-                                    </div>
-
-                                    <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
-                                        <span>
-                                            {Object.values(checklist).filter(Boolean).length} dari 4 pemeriksaan selesai
-                                        </span>
-                                        <span>
-                                            {Math.round(
-                                                (Object.values(checklist).filter(Boolean).length / 4) * 100,
-                                            )}%
-                                        </span>
-                                    </div>
-                                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                            <div className="space-y-5 overflow-y-auto p-5 sm:p-7">
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-neutral-50 p-4">
+                                    <p className="text-sm text-neutral-700">
+                                        {selectedReturn.assets.length} aset
+                                        dalam pengembalian ini. Pilih setiap
+                                        aset untuk mencatat kondisinya.
+                                    </p>
+                                    <p className="text-xs text-neutral-500">
+                                        Status ketersediaan aset tidak diubah
+                                        oleh pemeriksaan ini.
+                                    </p>
+                                </div>
+                                <div className="space-y-3">
+                                    {selectedReturn.assets.map((asset) => (
                                         <div
-                                            className="h-full rounded-full bg-gray-900 transition-all"
-                                            style={{
-                                                width: `${
-                                                    (Object.values(checklist).filter(Boolean).length / 4) * 100
-                                                }%`,
-                                            }}
-                                        />
-                                    </div>
-                                </section>
-
-                                <section>
-                                    <SectionHeading
-                                        title="Kondisi Aset"
-                                        description="Pilih kondisi aktual berdasarkan pemeriksaan fisik."
-                                    />
-
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                        {(
-                                            [
-                                                'Baik',
-                                                'Rusak Ringan',
-                                                'Rusak Berat',
-                                                'Tidak Lengkap',
-                                                'Hilang',
-                                            ] as AssetCondition[]
-                                        ).map((item) => (
-                                            <button
-                                                type="button"
-                                                key={item}
-                                                onClick={() => {
-                                                    setCondition(item);
-                                                    if (item === 'Baik') {
-                                                        setDecision('Layak Digunakan');
-                                                    } else if (item === 'Hilang') {
-                                                        setDecision('Tidak Layak');
-                                                    } else {
-                                                        setDecision('Perlu Perbaikan');
-                                                    }
-                                                }}
-                                                className={`flex items-center justify-between rounded-xl border p-3 text-left transition ${
-                                                    condition === item
-                                                        ? 'border-gray-500 bg-gray-100 ring-1 ring-gray-300'
-                                                        : 'border-gray-200 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                <span className="text-sm font-medium text-gray-700">
-                                                    {item}
-                                                </span>
-                                                {condition === item && (
-                                                    <Icon
-                                                        name="check-circle"
-                                                        size={16}
-                                                        className="text-gray-800"
-                                                    />
+                                            key={asset.id}
+                                            className="flex flex-col gap-3 rounded-xl border border-neutral-200 p-4 sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                            <div>
+                                                <p className="text-sm font-semibold text-neutral-900">
+                                                    {asset.name}
+                                                </p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    {asset.code} · {asset.type} ·{' '}
+                                                    {asset.location ||
+                                                        'Lokasi tidak tersedia'}{' '}
+                                                    · Jumlah {asset.quantity}
+                                                </p>
+                                                <p className="mt-2 text-xs text-neutral-600">
+                                                    Kondisi tercatat:{' '}
+                                                    {asset.inspectionCondition ??
+                                                        'Belum diperiksa'}
+                                                    {asset.inspectedAt
+                                                        ? ` · ${formatDate(asset.inspectedAt)}`
+                                                        : ''}
+                                                </p>
+                                                {asset.inspectionNotes && (
+                                                    <p className="mt-1 text-xs text-neutral-500">
+                                                        Catatan:{' '}
+                                                        {asset.inspectionNotes}
+                                                    </p>
                                                 )}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </section>
-
-                                <section>
-                                    <SectionHeading
-                                        title="Catatan Pemeriksaan"
-                                        description="Tambahkan catatan jika terdapat kerusakan, kekurangan, atau informasi lain."
-                                    />
-
-                                    <textarea
-                                        rows={3}
-                                        value={notes}
-                                        onChange={(event) =>
-                                            setNotes(event.target.value)
-                                        }
-                                        placeholder="Tuliskan hasil pemeriksaan aset..."
-                                        className={`${inputClass} resize-none`}
-                                    />
-                                </section>
-
-                                <section>
-                                    <SectionHeading
-                                        title="Keputusan Pemeriksaan"
-                                        description="Tentukan tindak lanjut berdasarkan kondisi aset."
-                                    />
-
-                                    <div className="grid gap-3 sm:grid-cols-3">
-                                        {(
-                                            [
-                                                {
-                                                    value: 'Layak Digunakan',
-                                                    icon: 'check-circle',
-                                                    description: 'Aset dapat digunakan kembali.',
-                                                },
-                                                {
-                                                    value: 'Perlu Perbaikan',
-                                                    icon: 'wrench',
-                                                    description: 'Aset perlu diperbaiki terlebih dahulu.',
-                                                },
-                                                {
-                                                    value: 'Tidak Layak',
-                                                    icon: 'alert-triangle',
-                                                    description: 'Aset tidak dapat digunakan.',
-                                                },
-                                            ] as {
-                                                value: InspectionDecision;
-                                                icon: IconName;
-                                                description: string;
-                                            }[]
-                                        ).map((item) => (
+                                            </div>
                                             <button
                                                 type="button"
-                                                key={item.value}
-                                                onClick={() => setDecision(item.value)}
-                                                className={`rounded-xl border p-4 text-left transition ${
-                                                    decision === item.value
-                                                        ? 'border-gray-500 bg-gray-100 ring-1 ring-gray-300'
-                                                        : 'border-gray-200 hover:bg-gray-50'
-                                                }`}
+                                                onClick={() =>
+                                                    openInspection(
+                                                        selectedReturn,
+                                                        asset,
+                                                    )
+                                                }
+                                                className="shrink-0 rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-700"
                                             >
-                                                <Icon
-                                                    name={item.icon}
-                                                    size={19}
-                                                    className="text-gray-700"
-                                                />
-                                                <p className="mt-3 text-sm font-semibold text-gray-800">
-                                                    {item.value}
-                                                </p>
-                                                <p className="mt-1 text-xs leading-5 text-gray-400">
-                                                    {item.description}
-                                                </p>
+                                                {asset.inspectedAt
+                                                    ? 'Ubah pemeriksaan'
+                                                    : 'Periksa aset'}
                                             </button>
-                                        ))}
-                                    </div>
-                                </section>
-
-                                {formError && (
-                                    <div className="flex items-start gap-2 rounded-xl border border-gray-300 bg-gray-100 p-3 text-xs leading-5 text-gray-700">
-                                        <Icon
-                                            name="alert-circle"
-                                            size={16}
-                                            className="mt-0.5 shrink-0"
-                                        />
-                                        <span>{formError}</span>
-                                    </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {selectedReturn.photos.length > 0 && (
+                                    <section>
+                                        <h3 className="text-sm font-semibold text-neutral-900">
+                                            Foto bukti dari peminjam
+                                        </h3>
+                                        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                            {selectedReturn.photos.map(
+                                                (photo, index) => (
+                                                    <a
+                                                        key={photo}
+                                                        href={photo}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="overflow-hidden rounded-xl border border-neutral-200"
+                                                    >
+                                                        <img
+                                                            src={photo}
+                                                            alt={`Foto bukti ${index + 1}`}
+                                                            className="h-28 w-full object-cover"
+                                                        />
+                                                    </a>
+                                                ),
+                                            )}
+                                        </div>
+                                    </section>
                                 )}
-                            </div>
-
-                            <div className="flex flex-col-reverse gap-2 border-t border-gray-100 bg-white px-6 py-4 sm:flex-row sm:justify-end">
-                                <button
-                                    onClick={closeInspection}
-                                    className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
-                                >
-                                    Batal
-                                </button>
-
-                                <button
-                                    onClick={handleSaveInspection}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
-                                >
-                                    <Icon name="save" size={15} />
-                                    Simpan Pemeriksaan
-                                </button>
+                                {selectedReturn.notes && (
+                                    <section>
+                                        <h3 className="text-sm font-semibold text-neutral-900">
+                                            Catatan peminjam
+                                        </h3>
+                                        <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600">
+                                            {selectedReturn.notes}
+                                        </p>
+                                    </section>
+                                )}
                             </div>
                         </div>
                     </div>,
                     document.body,
                 )}
 
-            {/* Detail Modal */}
-            {detailItem &&
+            {selectedReturn &&
+                selectedAsset &&
                 createPortal(
-                    <div
-                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-                        onMouseDown={(event) => {
-                            if (event.target === event.currentTarget) {
-                                setDetailItem(null);
-                            }
-                        }}
-                    >
-                        <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-                            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
-                                <div>
-                                    <h2 className="text-lg font-semibold text-gray-900">
-                                        Detail Pemeriksaan
-                                    </h2>
-                                    <p className="mt-1 text-xs text-gray-400">
-                                        {detailItem.code}
-                                    </p>
-                                </div>
-
-                                <button
-                                    onClick={() => setDetailItem(null)}
-                                    className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
-                                >
-                                    <Icon name="x" size={19} />
-                                </button>
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-6">
+                        <form
+                            onSubmit={submitInspection}
+                            className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
+                        >
+                            <div className="border-b border-neutral-100 px-5 py-4 sm:px-6">
+                                <h2 className="text-lg font-bold text-neutral-900">
+                                    Periksa Kondisi Aset
+                                </h2>
+                                <p className="mt-1 text-xs text-neutral-500">
+                                    {selectedAsset.code} · {selectedAsset.name}
+                                </p>
                             </div>
-
-                            <div className="space-y-6 p-6">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <StatusBadge status={detailItem.status} />
-                                    <ConditionBadge condition={detailItem.condition} />
-                                </div>
-
-                                <div className="grid gap-5 sm:grid-cols-2">
-                                    <DetailItem
-                                        label="Nama Peminjam"
-                                        value={detailItem.borrower}
-                                    />
-                                    <DetailItem
-                                        label="Identitas"
-                                        value={detailItem.identity}
-                                    />
-                                    <DetailItem
-                                        label="Organisasi"
-                                        value={detailItem.organization}
-                                    />
-                                    <DetailItem
-                                        label="Nama Aset"
-                                        value={detailItem.asset}
-                                    />
-                                    <DetailItem
-                                        label="Kode Aset"
-                                        value={detailItem.assetCode}
-                                    />
-                                    <DetailItem
-                                        label="Jumlah"
-                                        value={`${detailItem.quantity} ${
-                                            detailItem.assetType === 'Barang'
-                                                ? 'unit'
-                                                : 'ruangan'
-                                        }`}
-                                    />
-                                    <DetailItem
-                                        label="Tanggal Kembali"
-                                        value={formatDate(detailItem.actualReturnDate)}
-                                    />
-                                    <DetailItem
-                                        label="Petugas Pemeriksa"
-                                        value={detailItem.inspector}
-                                    />
-                                </div>
-
-                                <div className="border-t border-gray-100 pt-5">
-                                    <p className="mb-3 text-sm font-semibold text-gray-800">
-                                        Hasil Checklist
-                                    </p>
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                        {checklistItems.map((item) => (
-                                            <div
-                                                key={item.key}
-                                                className="flex items-center gap-2 text-xs text-gray-600"
-                                            >
-                                                <Icon
-                                                    name={
-                                                        detailItem[item.key]
-                                                            ? 'check-circle'
-                                                            : 'circle'
-                                                    }
-                                                    size={15}
-                                                    className="text-gray-600"
-                                                />
-                                                {item.title}
-                                            </div>
+                            <div className="space-y-4 p-5 sm:p-6">
+                                <label className="block space-y-2">
+                                    <span className="text-sm font-medium text-neutral-700">
+                                        Kondisi setelah dikembalikan
+                                    </span>
+                                    <select
+                                        required
+                                        value={condition}
+                                        onChange={(event) => {
+                                            const selectedCondition =
+                                                conditions.find(
+                                                    (value) =>
+                                                        value ===
+                                                        event.target.value,
+                                                );
+                                            if (selectedCondition) {
+                                                setCondition(selectedCondition);
+                                            }
+                                        }}
+                                        className={inputClass}
+                                    >
+                                        {conditions.map((value) => (
+                                            <option key={value} value={value}>
+                                                {value}
+                                            </option>
                                         ))}
-                                    </div>
-                                </div>
-
-                                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                                    <p className="text-xs text-gray-400">
-                                        Keputusan Akhir
+                                    </select>
+                                </label>
+                                <label className="block space-y-2">
+                                    <span className="text-sm font-medium text-neutral-700">
+                                        Catatan pemeriksaan (opsional)
+                                    </span>
+                                    <textarea
+                                        rows={3}
+                                        maxLength={2000}
+                                        value={notes}
+                                        onChange={(event) =>
+                                            setNotes(event.target.value)
+                                        }
+                                        className={inputClass}
+                                    />
+                                </label>
+                                <p className="text-xs leading-5 text-neutral-500">
+                                    Tindakan ini hanya memperbarui kondisi aset.
+                                    Status ketersediaannya tidak berubah.
+                                </p>
+                                {formError && (
+                                    <p
+                                        role="alert"
+                                        className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                                    >
+                                        {formError}
                                     </p>
-                                    <p className="mt-1 text-sm font-semibold text-gray-800">
-                                        {detailItem.decision || 'Belum ditentukan'}
-                                    </p>
-
-                                    <p className="mt-4 text-xs text-gray-400">
-                                        Catatan Pemeriksaan
-                                    </p>
-                                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-                                        {detailItem.notes || 'Tidak ada catatan.'}
-                                    </p>
-
-                                    {detailItem.inspectedAt && (
-                                        <p className="mt-4 text-xs text-gray-400">
-                                            Diperiksa pada {formatDate(detailItem.inspectedAt)}
-                                        </p>
-                                    )}
-                                </div>
+                                )}
                             </div>
-
-                            <div className="flex justify-end border-t border-gray-100 px-6 py-4">
+                            <div className="flex flex-col-reverse gap-2 border-t border-neutral-100 p-5 sm:flex-row sm:justify-end sm:px-6">
                                 <button
-                                    onClick={() => setDetailItem(null)}
-                                    className="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={() => setSelectedAsset(null)}
+                                    className="rounded-xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                                 >
-                                    Tutup
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
+                                >
+                                    {saving ? 'Menyimpan...' : 'Simpan Kondisi'}
                                 </button>
                             </div>
-                        </div>
+                        </form>
                     </div>,
                     document.body,
                 )}

@@ -7,7 +7,14 @@ import {
     requireAdmin,
     storeManagementImage,
 } from '@/lib/server/management';
+import { ensureAssetDataModel } from '@/lib/server/assets';
 import { getDb } from '@/lib/server/db';
+import {
+    displayLocation,
+    getLocationDisplays,
+    type LocationDisplay,
+    type LocationDocument,
+} from '@/lib/server/locations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -129,20 +136,23 @@ function readImageFiles(form: FormData): File[] | null {
     return values;
 }
 
-function displayRoom(room: RoomDocument) {
-    const createdAt =
-        room.createdAt instanceof Date
-            ? room.createdAt.toISOString().slice(0, 10)
-            : typeof room.createdAt === 'string'
-              ? room.createdAt.slice(0, 10)
-              : '';
+function dateOnly(value: Date | string | undefined) {
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (typeof value === 'string') return value.slice(0, 10);
+    return '';
+}
 
+function displayRoom(
+    room: RoomDocument,
+    location: LocationDisplay | null,
+) {
     return {
         id: room._id.toString(),
         code: room.code,
         name: room.name,
         type: room.type,
         locationId: room.locationId,
+        location,
         floor: room.floor,
         roomNumber: room.roomNumber,
         rfidCode: room.rfidCode,
@@ -160,7 +170,8 @@ function displayRoom(room: RoomDocument) {
                       ),
               )
             : [],
-        createdAt,
+        createdAt: dateOnly(room.createdAt),
+        updatedAt: dateOnly(room.updatedAt),
     };
 }
 
@@ -173,12 +184,22 @@ export async function GET() {
         const access = await requireAdmin();
         if (access.response) return access.response;
 
-        const rooms = await (await getDb())
+        const db = await getDb();
+        await ensureAssetDataModel(db);
+        const rooms = await db
             .collection<RoomDocument>('rooms')
             .find({})
             .sort({ createdAt: -1 })
             .toArray();
-        return NextResponse.json({ rooms: rooms.map(displayRoom) });
+        const locations = await getLocationDisplays(
+            db,
+            rooms.map((room) => room.locationId),
+        );
+        return NextResponse.json({
+            rooms: rooms.map((room) =>
+                displayRoom(room, locations.get(room.locationId) ?? null),
+            ),
+        });
     } catch (error) {
         return reportManagementError('room listing', error);
     }
@@ -205,12 +226,10 @@ export async function POST(request: Request) {
         }
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const locationExists = await db
-            .collection('locations')
-            .findOne(
-                { _id: new ObjectId(room.locationId) },
-                { projection: { _id: 1 } },
-            );
+            .collection<LocationDocument>('locations')
+            .findOne({ _id: new ObjectId(room.locationId) });
         if (!locationExists) return errorResponse('Gedung atau lokasi tidak ditemukan.', 404);
 
         const rooms = db.collection<RoomDocument>('rooms');
@@ -252,7 +271,11 @@ export async function POST(request: Request) {
 
         const created = await rooms.findOne({ _id: result.insertedId });
         return NextResponse.json(
-            { room: created ? displayRoom(created) : null },
+            {
+                room: created
+                    ? displayRoom(created, displayLocation(locationExists))
+                    : null,
+            },
             { status: 201 },
         );
     } catch (error) {

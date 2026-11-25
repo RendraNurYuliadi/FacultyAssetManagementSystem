@@ -7,7 +7,14 @@ import {
     requireAdmin,
     storeManagementImage,
 } from '@/lib/server/management';
+import { ensureAssetDataModel } from '@/lib/server/assets';
 import { getDb } from '@/lib/server/db';
+import {
+    displayLocation,
+    getLocationDisplays,
+    type LocationDisplay,
+    type LocationDocument,
+} from '@/lib/server/locations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -128,14 +135,16 @@ function readImageFiles(form: FormData): File[] | null {
     return values;
 }
 
-function displayItem(item: ItemDocument) {
-    const createdAt =
-        item.createdAt instanceof Date
-            ? item.createdAt.toISOString().slice(0, 10)
-            : typeof item.createdAt === 'string'
-              ? item.createdAt.slice(0, 10)
-              : '';
+function dateOnly(value: Date | string | undefined) {
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (typeof value === 'string') return value.slice(0, 10);
+    return '';
+}
 
+function displayItem(
+    item: ItemDocument,
+    location: LocationDisplay | null,
+) {
     return {
         id: item._id.toString(),
         code: item.code,
@@ -147,6 +156,7 @@ function displayItem(item: ItemDocument) {
         unit: item.unit,
         locationId:
             typeof item.locationId === 'string' ? item.locationId : '',
+        location,
         responsiblePerson: item.responsiblePerson,
         description: item.description,
         status: item.status,
@@ -160,7 +170,8 @@ function displayItem(item: ItemDocument) {
                       ),
               )
             : [],
-        createdAt,
+        createdAt: dateOnly(item.createdAt),
+        updatedAt: dateOnly(item.updatedAt),
     };
 }
 
@@ -173,12 +184,22 @@ export async function GET() {
         const access = await requireAdmin();
         if (access.response) return access.response;
 
-        const items = await (await getDb())
+        const db = await getDb();
+        await ensureAssetDataModel(db);
+        const items = await db
             .collection<ItemDocument>('items')
             .find({})
             .sort({ createdAt: -1 })
             .toArray();
-        return NextResponse.json({ items: items.map(displayItem) });
+        const locations = await getLocationDisplays(
+            db,
+            items.map((item) => item.locationId),
+        );
+        return NextResponse.json({
+            items: items.map((item) =>
+                displayItem(item, locations.get(item.locationId) ?? null),
+            ),
+        });
     } catch (error) {
         return reportManagementError('item listing', error);
     }
@@ -209,11 +230,11 @@ export async function POST(request: Request) {
         }
 
         const db = await getDb();
+        await ensureAssetDataModel(db);
         const items = db.collection<ItemDocument>('items');
-        const locationExists = await db.collection('locations').findOne(
-            { _id: new ObjectId(item.locationId) },
-            { projection: { _id: 1 } },
-        );
+        const locationExists = await db
+            .collection<LocationDocument>('locations')
+            .findOne({ _id: new ObjectId(item.locationId) });
         if (!locationExists) {
             return errorResponse('Lokasi barang tidak ditemukan.', 404);
         }
@@ -247,7 +268,11 @@ export async function POST(request: Request) {
 
         const created = await items.findOne({ _id: result.insertedId });
         return NextResponse.json(
-            { item: created ? displayItem(created) : null },
+            {
+                item: created
+                    ? displayItem(created, displayLocation(locationExists))
+                    : null,
+            },
             { status: 201 },
         );
     } catch (error) {
